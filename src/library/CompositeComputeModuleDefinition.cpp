@@ -99,3 +99,15 @@ results.insert(results.end(), gradientOperators.begin(), gradientOperators.end()
 
 return results;
 }
+
+std::vector<std::string> CompositeComputeModuleDefinition::GetModuleNames() const
+{
+std::vector<std::string> results;
+
+for(int64_t module_index = 0; module_index < modules.size(); module_index++)
+{
+results.emplace_back(modules[module_index]->Name());
+}
+
+return results;
+}

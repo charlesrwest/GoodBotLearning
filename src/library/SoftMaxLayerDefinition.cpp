@@ -1,5 +1,6 @@
 #include "SoftMaxLayerDefinition.hpp"
 #include "UtilityFunctions.hpp"
+#include<iostream>
 
 using namespace GoodBot;
 
@@ -14,7 +15,7 @@ return layerName;
 
 std::vector<std::string> SoftMaxLayerDefinition::GetInputBlobNames() const
 {
-if((mode == "TRAIN") || (mode == "TEST"))
+if((Mode() == "TRAIN") || (Mode() == "TEST"))
 {
 return {inputBlobName, trainingExpectedOutputBlobName};
 }
@@ -24,17 +25,20 @@ return {inputBlobName};
 
 std::vector<std::string> SoftMaxLayerDefinition::GetOutputBlobNames() const
 {
-if((mode == "TRAIN") || (mode == "TEST"))
+if((Mode() == "TRAIN") || (Mode() == "TEST"))
 {
+std::cout << "Yello" << std::endl << std::flush;
+
 return {GetSoftMaxOutputBlobName(), GetTrainingLossOutputBlobName()};
 }
 
+std::cout << "Bello" << std::endl << std::flush;
 return {GetSoftMaxOutputBlobName()};
 }
 
 std::vector<caffe2::OperatorDef> SoftMaxLayerDefinition::GetNetworkOperators() const
 {
-if(mode == "DEPLOY")
+if(Mode() == "DEPLOY")
 {
 std::vector<caffe2::OperatorDef> results;
 
@@ -47,7 +51,7 @@ softMax.add_output(GetSoftMaxOutputBlobName());
 
 return results;
 }
-else if(mode == "TRAIN")
+else if(Mode() == "TRAIN")
 {
 std::vector<caffe2::OperatorDef> results;
 
@@ -62,7 +66,7 @@ softMaxWithLoss.add_output(GetTrainingLossOutputBlobName());
 
 return results;
 }
-else if(mode == "TEST")
+else if(Mode() == "TEST")
 {
 std::vector<caffe2::OperatorDef> results;
 

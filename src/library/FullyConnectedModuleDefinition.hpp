@@ -7,13 +7,7 @@ namespace GoodBot
 
 struct FullyConnectedModuleDefinitionParameters
 {
-std::string inputBlobName;
-int64_t numberOfInputs = 0;
-std::vector<int64_t> numberOfNodesInLayers;
-std::string moduleName;
-std::string weightFillType = "XavierFill";
-std::string biasFillType = "ConstantFill";
-std::string activationType = "Sigmoid";
+
 };
 
 /**
@@ -22,7 +16,7 @@ This class represents one or more fully connected layers sequentially connected 
 class FullyConnectedModuleDefinition : public CompositeComputeModuleDefinition
 {
 public:
-FullyConnectedModuleDefinition(const FullyConnectedModuleDefinitionParameters& inputParameters);
+FullyConnectedModuleDefinition(const std::string& inputBlobName, const std::vector<int64_t>& numberOfNodesInLayers, const std::string& moduleName, int64_t numberOfInputs = 0, const std::string& weightFillType = "XavierFill", const std::string& biasFillType = "ConstantFill", const std::string& activationType = "Tanh");
 
 virtual std::string Name() const override;
 

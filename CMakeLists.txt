@@ -26,7 +26,7 @@ add_definitions(-DWITH_GPU)
 #Tell compiler where to find required libraries
 link_directories(/usr/lib/x86_64-linux-gnu/)
 
-include_directories(./src/library/ ./src/executables/unitTests ./src/executables/categoricalVGG ./Catch/single_include ${Caffe2_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR})
+include_directories(./src/library/ ./src/executables/unitTests ./src/executables/categoricalVGG ./Catch/single_include ${Caffe2_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 
 find_package(Threads)
 

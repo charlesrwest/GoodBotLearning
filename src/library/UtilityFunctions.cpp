@@ -115,3 +115,13 @@ AddOperatorToResults(operatorIndex);
 
 return results;
 }
+
+std::string GoodBot::MakeWeightBlobName(const std::string& prefix)
+{
+return prefix + "_w";
+}
+
+std::string GoodBot::MakeBiasBlobName(const std::string& prefix)
+{
+return prefix + "_b";
+}

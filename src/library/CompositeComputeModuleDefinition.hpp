@@ -55,6 +55,12 @@ The default implementation of this function returns an ordered list of all netwo
 */
 virtual std::vector<caffe2::OperatorDef> GetGradientOperators() const override;
 
+/**
+The default implementation of this function returns an order list of all module names contained at the top level.
+@return: A list of all modules
+*/
+virtual std::vector<std::string> GetModuleNames() const;
+
 protected:
 std::vector<std::unique_ptr<ComputeModuleDefinition>> modules;
 };

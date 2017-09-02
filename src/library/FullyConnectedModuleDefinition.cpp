@@ -5,27 +5,27 @@
 
 using namespace GoodBot;
 
-FullyConnectedModuleDefinition::FullyConnectedModuleDefinition(const FullyConnectedModuleDefinitionParameters& inputParameters) : moduleName(inputParameters.moduleName)
+FullyConnectedModuleDefinition::FullyConnectedModuleDefinition(const std::string& inputBlobName, const std::vector<int64_t>& numberOfNodesInLayers, const std::string& moduleName, int64_t numberOfInputs, const std::string& weightFillType, const std::string& biasFillType, const std::string& activationType) : moduleName(moduleName)
 {
 //Construct layers for this module
 FullyConnectedLayerDefinitionParameters layerParameters;
-layerParameters.numberOfInputs = inputParameters.numberOfInputs;
-layerParameters.weightFillType = inputParameters.weightFillType;
-layerParameters.biasFillType = inputParameters.biasFillType;
-layerParameters.activationType = inputParameters.activationType;
+layerParameters.numberOfInputs = numberOfInputs;
+layerParameters.weightFillType = weightFillType;
+layerParameters.biasFillType = biasFillType;
+layerParameters.activationType = activationType;
 
-for(int64_t layerIndex = 0; layerIndex < inputParameters.numberOfNodesInLayers.size(); layerIndex++)
+for(int64_t layerIndex = 0; layerIndex < numberOfNodesInLayers.size(); layerIndex++)
 {
-int64_t numberOfNodesInLayer = inputParameters.numberOfNodesInLayers[layerIndex];
+int64_t numberOfNodesInLayer = numberOfNodesInLayers[layerIndex];
 
 if(layerIndex == 0)
 {
-layerParameters.inputBlobName = inputParameters.inputBlobName;
+layerParameters.inputBlobName = inputBlobName;
 }
 else
 {
 layerParameters.inputBlobName = modules[layerIndex - 1]->GetOutputBlobNames()[0];
-layerParameters.numberOfInputs = inputParameters.numberOfNodesInLayers[layerIndex-1];
+layerParameters.numberOfInputs = numberOfNodesInLayers[layerIndex-1];
 }
 
 layerParameters.numberOfNodes = numberOfNodesInLayer;

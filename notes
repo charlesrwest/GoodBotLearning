@@ -1,0 +1,11 @@
+As far as I can tell, blobs in Caffe2 really are just big arrays in native format.  Given that inputs/outputs are fixed sized with a feed forward network (such as traditional fully connected networks or convolutional networks), it should be possible to just read/write blocks of memory directly (memcpy style) and feed those directly to caffe2 (using parallel processing with ram buffers at a later date).
+
+Modules to implement:
+Cast Operator <- done
+Scale Operator <- done
+Conv operator <- done
+Max pool operator <- done
+Softmax <- done?
+Accuracy?
+
+Might want to make add op/add arg convience functions

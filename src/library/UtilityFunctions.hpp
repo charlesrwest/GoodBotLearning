@@ -36,7 +36,11 @@ Network operators can create blobs by having them as outputs.  However, caffe2 t
 */
 std::vector<caffe2::OperatorDef> ReorderOperatorsToResolveDependencies(const std::vector<caffe2::OperatorDef>& inputOperators, const std::vector<std::string>& inputExistingBlobNames);
 
+std::string MakeWeightBlobName(const std::string& prefix);
 
+std::string MakeBiasBlobName(const std::string& prefix);
+
+ 
 
 
 

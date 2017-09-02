@@ -12,6 +12,11 @@
 #include<cassert>
 #include "AveragedL2LossModuleDefinition.hpp"
 #include "AdamSolver.hpp"
+#include<fstream>
+#include<random>
+#include<cstdio>
+#include "DataLoader.hpp"
+#include "SOMScopeGuard.hpp"
 
 const double PI  =3.141592653589793238463;
 const float  PI_F=3.14159265358979f;
@@ -30,9 +35,9 @@ std::swap(expectedOutputData[index], expectedOutputData[elementToSwapWithIndex])
 }
 };
 
-/**
-Not truly a test case, example of training using the new compute module way of specifying networks.
-*/
+
+/*
+//Not truly a test case, example of training using the new compute module way of specifying networks.
 TEST_CASE("Test generated Fully Connected NetDefs", "[Example]")
 {
 //Make 10000 training examples
@@ -66,13 +71,7 @@ expectedOutputBlob.Resize(batch_size, 1);
 expectedOutputBlob.mutable_data<float>();
 
 //Define a 3 layer fully connected network with default (sigmoidal) activation
-GoodBot::FullyConnectedModuleDefinitionParameters networkParameters;
-networkParameters.inputBlobName = "inputBlob";
-networkParameters.numberOfInputs = 1;
-networkParameters.numberOfNodesInLayers = {100, 100, 1};
-networkParameters.moduleName = "HelloNetwork";
-
-GoodBot::FullyConnectedModuleDefinition network(networkParameters);
+GoodBot::FullyConnectedModuleDefinition network("inputBlob", {100, 100, 1}, "HelloNetwork", 1);
 network.SetMode("TRAIN");
 
 //Add a module for computing loss to the end of the network
@@ -178,6 +177,7 @@ pretrainedDeployResults << *inputBlob.mutable_data<float>() << ", " << *networkO
 
 
 }
+*/
 
 TEST_CASE("Run iterator network and get data", "[Example]")
 {
@@ -229,8 +229,107 @@ REQUIRE(iteratorBlob.mutable_data<int64_t>()[0] == counter);
 iterationNetwork->Run();
 }
 
+}
+
+//Returns sum of outputted sequence (can wrap around)
+uint64_t WriteOutSequentialNumbers(uint64_t startValue, int64_t numberOfEntries, std::ofstream& outputStream)
+{
+uint64_t sum = 0;
+for(int64_t entry_index = 0; entry_index < numberOfEntries; entry_index++)
+{
+uint64_t buffer = startValue + entry_index;
+sum = sum + buffer;
+outputStream.write((char*) &buffer, sizeof(uint64_t));
+}
+
+return sum;
+} 
+
+TEST_CASE("Write blobber file and pseudo-randomly read from it", "[Example]")
+{
+//Inputs are N sequential number starting at a random place and outputs are sequences of integers which start at the sum of the input sequence.
+std::random_device randomness;
+std::uniform_int_distribution<uint64_t> random_integer_generator(0, std::numeric_limits<uint64_t>::max());
 
 
+auto TryCombination = [&](int64_t numberOfEntries, int64_t inputSequenceLength, int64_t outputSequenceLength, int64_t bufferSize, int64_t numberOfBuffers, int64_t maxRereadsBeforeRefill, int64_t numberOfTestReads, int64_t batchSize)
+{
+std::string temp_file_name = "temp.blobber";
 
+//Delete the temporary file when we leave this function
+SOMScopeGuard file_deleter([&](){ remove(temp_file_name.c_str()); });
+
+int64_t input_blob_size = inputSequenceLength*sizeof(uint64_t);
+int64_t output_blob_size = outputSequenceLength*sizeof(uint64_t);
+
+//Write out the file
+{
+std::ofstream output_stream(temp_file_name,  std::ofstream::binary);
+
+for(int64_t entry_index = 0; entry_index < numberOfEntries; entry_index++)
+{
+uint64_t output_sequence_start = 0;
+uint64_t input_sequence_start = random_integer_generator(randomness);
+
+//Write input sequence followed by output sequence
+output_sequence_start = WriteOutSequentialNumbers(input_sequence_start, inputSequenceLength, output_stream);
+
+WriteOutSequentialNumbers(output_sequence_start, outputSequenceLength, output_stream);
+}
+}
+
+//Check file size
+{
+std::ifstream input_stream(temp_file_name,  std::ifstream::binary);
+
+std::streampos start_position = input_stream.tellg();
+
+input_stream.seekg(0, std::ifstream::end);
+
+int64_t file_size = input_stream.tellg() - start_position;
+
+REQUIRE(file_size == ((input_blob_size+output_blob_size)*numberOfEntries));
+}
+
+//Make a data loader and see if the retrieved blobs are coherent (match input/output rule)
+GoodBot::DataLoader loader(temp_file_name, input_blob_size, output_blob_size, bufferSize, numberOfBuffers, maxRereadsBeforeRefill);
+
+std::vector<uint64_t> input_buffer(inputSequenceLength*batchSize);
+std::vector<uint64_t> output_buffer(outputSequenceLength*batchSize);
+
+for(int64_t test_read_index = 0; test_read_index < numberOfTestReads; test_read_index++)
+{
+loader.ReadBlobs((char*) &input_buffer[0], (char*) &output_buffer[0], batchSize);
+
+//Check each blob in batch
+for(int64_t blob_index = 0; blob_index < batchSize; blob_index++)
+{
+int64_t input_sequence_offset = blob_index*inputSequenceLength;
+uint64_t input_sum = input_buffer[input_sequence_offset];
+
+//Check that input is a sequence
+for(int64_t sequence_index = 1; sequence_index < inputSequenceLength; sequence_index++)
+{
+REQUIRE((input_buffer[sequence_index - 1 + input_sequence_offset]+1) == input_buffer[sequence_index + input_sequence_offset]);
+input_sum += input_buffer[sequence_index + input_sequence_offset];
+}
+
+//Make sure output start matches
+int64_t output_sequence_offset = blob_index*outputSequenceLength;
+REQUIRE(output_buffer[output_sequence_offset] == input_sum);
+
+//Check that output is a sequence
+for(int64_t sequence_index = 1; sequence_index < outputSequenceLength; sequence_index++)
+{
+REQUIRE((output_buffer[sequence_index - 1 + output_sequence_offset]+1) == output_buffer[sequence_index + output_sequence_offset]);
+}
+}
+
+}
+
+};
+ 
+//Write/read files with 1000 entries with input sequences of length 10 and output sequences of length 3, 5 buffers of 100 entries, with a max 2 rereads and 1000000 test reads, batch size 3
+TryCombination(1000, 10, 3, 100, 5, 2, 1000000, 3);
 }
 
