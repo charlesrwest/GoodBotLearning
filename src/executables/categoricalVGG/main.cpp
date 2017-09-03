@@ -16,31 +16,22 @@
 #include "DataLoader.hpp"
 
 
-caffe2::TensorCPU GetTensor(const caffe2::Blob &blob) 
-{
-return caffe2::TensorCPU(blob.Get<caffe2::TensorCUDA>());
-}
-
 int main(int argc, char **argv)
 {
 //Create the Caffe2 workspace/context
-caffe2::GlobalInit(&argc, &argv);
+caffe2::Workspace workspace;
+caffe2::CPUContext context;
 
-caffe2::DeviceOption option;
-option.set_device_type(caffe2::CUDA);
-new caffe2::CUDAContext(option);
-
-caffe2::Workspace workspace("tmp");
 
 //Create the blobs to inject the sine input/output for training
-workspace.CreateBlob("inputBlob")->GetMutable<caffe2::TensorCUDA>();
-GetTensor(*workspace.GetBlob("inputBlob")).Resize(3, 256, 256);
-GetTensor(*workspace.GetBlob("inputBlob")).mutable_data<uint8_t>();
+caffe2::TensorCPU& inputBlob = *workspace.CreateBlob("inputBlob")->GetMutable<caffe2::TensorCPU>();
+inputBlob.Resize(1, 3, 256, 256);
+inputBlob.mutable_data<uint8_t>();
 
 std::string trainingExpectedOutputBlobName = "expectedOutputBlobName";
-*workspace.CreateBlob(trainingExpectedOutputBlobName)->GetMutable<caffe2::TensorCUDA>();
-GetTensor(*workspace.GetBlob("expectedOutputBlobName")).Resize(1, 1);
-GetTensor(*workspace.GetBlob("expectedOutputBlobName")).mutable_data<int32_t>();
+caffe2::TensorCPU& expectedOutputBlob = *workspace.CreateBlob(trainingExpectedOutputBlobName)->GetMutable<caffe2::TensorCPU>();
+expectedOutputBlob.Resize(1, 1);
+expectedOutputBlob.mutable_data<int32_t>();
 
 //Define a VGG16 network
 GoodBot::VGG16Parameters VGG_param;
@@ -53,6 +44,7 @@ VGG_param.TestExpectedOutputBlobName = "expectedOutputBlobName";
 VGG_param.BatchSize = 1;
 
 GoodBot::VGG16 network(VGG_param);
+
 network.SetMode("TRAIN");
 
 /*
@@ -68,8 +60,6 @@ std::cout << module_name << std::endl << std::flush;
 
 //Get the name of the loss blob
 std::cout << "Network has " << network.GetOutputBlobNames().size() << std::endl << std::flush;
-
-std::string loss_blob_name = network.GetOutputBlobNames()[1];
 
 //Add a solver module for training/updating
 GoodBot::AdamSolverParameters solverParams;
@@ -95,38 +85,41 @@ network.SetMode("TRAIN");
 //Initialize the network by automatically generating the NetDef for network initialization in "TRAIN" mode
 caffe2::NetDef trainingNetworkInitializationDefinition = network.GetInitializationNetwork();
 
-trainingNetworkInitializationDefinition.mutable_device_option()->set_device_type(caffe2::CUDA);
-
 //Print out the generated network architecture
 //print(trainingNetworkInitializationDefinition);
 
 //Create and run the initialization network.
 caffe2::NetBase* initializationNetwork = workspace.CreateNet(trainingNetworkInitializationDefinition);
-initializationNetwork->Run();
+
+std::cout << "About to initialize network" << std::endl << std::flush;
+//initializationNetwork->Run();
+std::cout << "Network initialized" << std::endl << std::flush;
 
 //Automatically generate the training network
-caffe2::NetDef trainingNetworkDefinition = network.GetNetwork(workspace.Blobs());
+//caffe2::NetDef trainingNetworkDefinition = network.GetNetwork(workspace.Blobs());
 
-trainingNetworkDefinition.mutable_device_option()->set_device_type(caffe2::CUDA);
+std::cout << "Created training network" << std::endl << std::flush;
 
-print(trainingNetworkDefinition);
+//print(trainingNetworkDefinition);
 
 //Instance the training network implementation
-caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
+//caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
 
 //Setup IO with the training data set
-GoodBot::DataLoader loader("../data/trainingData.blobber", 3*256*256*sizeof(uint8_t), sizeof(int32_t), 100, 10, 1);
+GoodBot::DataLoader loader("../data/trainingData.blobber", 3*256*256*sizeof(uint8_t), sizeof(int32_t), 5, 2, 1);
 
 //Train the network
-int64_t numberOfTrainingIterations = 100000;
+int64_t numberOfTrainingIterations = 10000000;
 
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {
 //Load data into blobs
-loader.ReadBlobs((char *) GetTensor(*workspace.GetBlob("inputBlob")).mutable_data<uint8_t>(), (char *) GetTensor(*workspace.GetBlob("expectedOutputBlobName")).mutable_data<int32_t>(), 1);
+loader.ReadBlobs((char *) inputBlob.mutable_data<uint8_t>(), (char *) expectedOutputBlob.mutable_data<int32_t>(), 1);
+
+std::cout << "Training network" << std::endl << std::flush;
 
 //Run network with loaded instance
-trainingNetwork->Run();
+//trainingNetwork->Run();
 }
 
 /*

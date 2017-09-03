@@ -31,6 +31,7 @@ conv_module_params.InputDepth = previous_layer_depth;
 conv_module_params.OutputDepth = inputParameters.OutputDepth;
 
 AddModule(*(new ConvModule(conv_module_params)));
+previous_layer_depth = inputParameters.OutputDepth;
 }
 LastConvLayerIndex = modules.size() - 1;
 

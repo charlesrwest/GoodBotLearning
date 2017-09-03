@@ -29,7 +29,12 @@ operatorDef.add_output(OutputBlobName);
 
 caffe2::Argument& value = *operatorDef.add_arg();
 value.set_name("to");
-value.set_i(TargetDataType);
+value.set_s("FLOAT");
+//value.set_i(TargetDataType);
+
+caffe2::Argument& from_type = *operatorDef.add_arg();
+from_type.set_name("from_type");
+from_type.set_s("UINT8");
 
 return results;
 }

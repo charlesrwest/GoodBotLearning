@@ -4,6 +4,8 @@
 #include "SoftMaxLayerDefinition.hpp"
 #include "FullyConnectedOperator.hpp"
 #include "FullyConnectedModuleDefinition.hpp"
+#include "CastModule.hpp"
+#include "ScaleModule.hpp"
 #include<iostream>
 
 using namespace GoodBot;
@@ -11,6 +13,28 @@ using namespace GoodBot;
 VGG16::VGG16(const VGG16Parameters& inputParameters)
 {
 SetName(inputParameters.Name);
+
+std::string casted_input_blob_name = inputParameters.InputBlobName + "_casted";
+
+CastModuleParameters cast_parameters;
+cast_parameters.name = Name() + "_cast";
+cast_parameters.InputBlobName = inputParameters.InputBlobName;
+cast_parameters.TargetDataType = caffe2::TensorProto_DataType_FLOAT;
+cast_parameters.OutputBlobName = casted_input_blob_name;
+
+AddModule(*(new CastModule(cast_parameters)));
+
+ScaleModuleParameters scale_parameters;
+scale_parameters.name = Name() + "_scale";
+scale_parameters.InputBlobName = casted_input_blob_name;
+scale_parameters.OutputBlobName = casted_input_blob_name;
+scale_parameters.Scale = 1.0 / 256.0;
+
+AddModule(*(new ScaleModule(scale_parameters)));
+
+//Add cast operator to convert from uchar to float
+//predictionNetwork.AddCastOp("data_uint8", "data", caffe2::TensorProto_DataType_FLOAT);
+//predictionNetwork.AddScaleOp("data", "data", 1.0 / 256.0);
 
 VGGConvolutionModuleParameters parameters;
 
@@ -38,7 +62,7 @@ AddModule(*(new VGGConvolutionModule(
 VGGConvolutionModuleParameters
 {
 parameters.LayerName,
-conv_index == 0 ? inputParameters.InputBlobName : modules.back()->GetOutputBlobNames()[0],
+conv_index == 0 ? casted_input_blob_name : modules.back()->GetOutputBlobNames()[0],
 parameters.LayerName,
 conv_index == 0 ? 3 : conv_parameters[conv_index-1].OutputDepth,
 parameters.OutputDepth,
