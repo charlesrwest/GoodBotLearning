@@ -1,6 +1,7 @@
 #include "VGGConvolutionModule.hpp"
 #include "ConvModule.hpp"
 #include "RELUModule.hpp"
+#include "MaxPoolModule.hpp"
 #include<iostream>
 
 using namespace GoodBot;
@@ -35,7 +36,19 @@ previous_layer_depth = inputParameters.OutputDepth;
 }
 LastConvLayerIndex = modules.size() - 1;
 
-AddModule(*(new RELUModule({Name() + "_relu", modules.back()->GetOutputBlobNames()[0], modules.back()->GetOutputBlobNames()[0]})));
+//Add max pooling
+MaxPoolModuleParameters max_pool_params;
+max_pool_params.Name = Name() + "_max_pool";
+max_pool_params.InputBlobName = modules.back()->GetOutputBlobNames()[0];
+max_pool_params.OutputBlobName = max_pool_params.Name;
+max_pool_params.Stride = 2;
+max_pool_params.Padding = 0;
+max_pool_params.KernelSize = 2; 
+max_pool_params.ImageOrder = "NCHW";
+
+AddModule(*(new MaxPoolModule(max_pool_params)));
+
+AddModule(*(new RELUModule({Name() + "_relu", max_pool_params.OutputBlobName, max_pool_params.OutputBlobName})));
 }
 
 std::vector<std::string> VGGConvolutionModule::GetInputBlobNames() const

@@ -32,10 +32,8 @@ scale_parameters.Scale = 1.0 / 256.0;
 
 AddModule(*(new ScaleModule(scale_parameters)));
 
-//Add cast operator to convert from uchar to float
-//predictionNetwork.AddCastOp("data_uint8", "data", caffe2::TensorProto_DataType_FLOAT);
-//predictionNetwork.AddScaleOp("data", "data", 1.0 / 256.0);
 
+//Add cast operator to convert from uchar to float
 VGGConvolutionModuleParameters parameters;
 
 struct ConvolutionParameters
@@ -72,19 +70,21 @@ parameters.NumberOfConvolutions
 }
 
 
+int64_t fully_connected_layers_size = 1;
+
 //Add 2 fully connected layers with activations
 AddModule(*(new FullyConnectedModuleDefinition(
 modules.back()->GetOutputBlobNames()[0],
-std::vector<int64_t>{4096, 4096},
+std::vector<int64_t>{fully_connected_layers_size, fully_connected_layers_size},
 Name() + "_fc_relu",
-32768)));
+25088)));
 
 //Add a fully connected layer with a 1 hot output
 AddModule(*(new FullyConnectedOperator(
 Name() + "_fc1",
 modules.back()->GetOutputBlobNames()[0],
 Name() + "_fc1",
-4096,
+fully_connected_layers_size,
 5
 )));
 

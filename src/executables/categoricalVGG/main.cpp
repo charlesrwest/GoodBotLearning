@@ -25,7 +25,7 @@ caffe2::CPUContext context;
 
 //Create the blobs to inject the sine input/output for training
 caffe2::TensorCPU& inputBlob = *workspace.CreateBlob("inputBlob")->GetMutable<caffe2::TensorCPU>();
-inputBlob.Resize(1, 3, 256, 256);
+inputBlob.Resize(1, 3, 224, 224);
 inputBlob.mutable_data<uint8_t>();
 
 std::string trainingExpectedOutputBlobName = "expectedOutputBlobName";
@@ -67,7 +67,7 @@ solverParams.moduleName = "AdamSolver";
 solverParams.trainableParameterNames = network.GetTrainableBlobNames();
 solverParams.trainableParameterShapes = network.GetTrainableBlobShapes();
 
-network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
+//network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
 
 //Add function to allow printing of network architectures
 std::function<void(const google::protobuf::Message&)> print = [&](const google::protobuf::Message& inputMessage)
@@ -92,21 +92,21 @@ caffe2::NetDef trainingNetworkInitializationDefinition = network.GetInitializati
 caffe2::NetBase* initializationNetwork = workspace.CreateNet(trainingNetworkInitializationDefinition);
 
 std::cout << "About to initialize network" << std::endl << std::flush;
-//initializationNetwork->Run();
+initializationNetwork->Run();
 std::cout << "Network initialized" << std::endl << std::flush;
 
 //Automatically generate the training network
-//caffe2::NetDef trainingNetworkDefinition = network.GetNetwork(workspace.Blobs());
+caffe2::NetDef trainingNetworkDefinition = network.GetNetwork(workspace.Blobs());
 
 std::cout << "Created training network" << std::endl << std::flush;
 
-//print(trainingNetworkDefinition);
+print(trainingNetworkDefinition);
 
 //Instance the training network implementation
-//caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
+caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
 
 //Setup IO with the training data set
-GoodBot::DataLoader loader("../data/trainingData.blobber", 3*256*256*sizeof(uint8_t), sizeof(int32_t), 5, 2, 1);
+GoodBot::DataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint8_t), sizeof(int32_t), 100, 10, 1);
 
 //Train the network
 int64_t numberOfTrainingIterations = 10000000;
@@ -114,12 +114,12 @@ int64_t numberOfTrainingIterations = 10000000;
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {
 //Load data into blobs
-loader.ReadBlobs((char *) inputBlob.mutable_data<uint8_t>(), (char *) expectedOutputBlob.mutable_data<int32_t>(), 1);
+//loader.ReadBlobs((char *) inputBlob.mutable_data<uint8_t>(), (char *) expectedOutputBlob.mutable_data<int32_t>(), 1);
 
-std::cout << "Training network" << std::endl << std::flush;
+std::cout << "Training network iter " << iteration << std::endl << std::flush;
 
 //Run network with loaded instance
-//trainingNetwork->Run();
+trainingNetwork->Run();
 }
 
 /*
