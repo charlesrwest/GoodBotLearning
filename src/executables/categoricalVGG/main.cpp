@@ -113,15 +113,17 @@ GoodBot::DataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint
 //Train the network
 int64_t numberOfTrainingIterations = 10000000;
 
+caffe2::TensorCPU& loss = *workspace.GetBlob("0_soft_max_training_loss")->GetMutable<caffe2::TensorCPU>();
+
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {
 //Load data into blobs
-//loader.ReadBlobs((char *) inputBlob.mutable_data<uint8_t>(), (char *) expectedOutputBlob.mutable_data<int32_t>(), 1);
-
-std::cout << "Training network iter " << iteration << std::endl << std::flush;
+loader.ReadBlobs((char *) inputBlob.mutable_data<uint8_t>(), (char *) expectedOutputBlob.mutable_data<int32_t>(), 1);
 
 //Run network with loaded instance
 trainingNetwork->Run();
+
+std::cout << "Training network iter " << iteration << " loss " << (*loss.mutable_data<float>()) << std::endl << std::flush;
 }
 
 /*
