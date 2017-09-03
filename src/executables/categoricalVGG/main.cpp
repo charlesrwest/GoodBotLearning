@@ -67,7 +67,7 @@ solverParams.moduleName = "AdamSolver";
 solverParams.trainableParameterNames = network.GetTrainableBlobNames();
 solverParams.trainableParameterShapes = network.GetTrainableBlobShapes();
 
-//network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
+network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
 
 //Add function to allow printing of network architectures
 std::function<void(const google::protobuf::Message&)> print = [&](const google::protobuf::Message& inputMessage)
@@ -104,6 +104,8 @@ print(trainingNetworkDefinition);
 
 //Instance the training network implementation
 caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
+
+workspace.PrintBlobSizes();
 
 //Setup IO with the training data set
 GoodBot::DataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint8_t), sizeof(int32_t), 100, 10, 1);

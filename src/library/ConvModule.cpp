@@ -26,7 +26,7 @@ return {MakeWeightBlobName(Name()), MakeBiasBlobName(Name())};
 
 std::vector<std::vector<int64_t>> ConvModule::GetTrainableBlobShapes() const
 {
-return {{OutputDepth, InputDepth, KernelSize}, {OutputDepth}};
+return {{OutputDepth, InputDepth, KernelSize, KernelSize}, {OutputDepth}};
 }
 
 std::vector<caffe2::OperatorDef> ConvModule::GetNetworkOperators() const
