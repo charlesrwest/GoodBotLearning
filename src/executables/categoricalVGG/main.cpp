@@ -14,33 +14,52 @@
 #include "caffe2/core/init.h"
 #include "caffe2/core/context_gpu.h"
 #include "DataLoader.hpp"
+#include "DataSynchronizer.hpp"
 
 
 int main(int argc, char **argv)
 {
 //Create the Caffe2 workspace/context
+caffe2::DeviceOption option;
+option.set_device_type(caffe2::CUDA);
+caffe2::CUDAContext cuda_context(option);
+
+//caffe2::CPUContext cpu_context;
+
 caffe2::Workspace workspace;
-caffe2::CPUContext context;
 
 
 //Create the blobs to inject the sine input/output for training
-caffe2::TensorCPU& inputBlob = *workspace.CreateBlob("inputBlob")->GetMutable<caffe2::TensorCPU>();
-inputBlob.Resize(1, 3, 224, 224);
-inputBlob.mutable_data<uint8_t>();
+caffe2::TensorCPU& input_blob_cpu = *workspace.CreateBlob("input_blob_cpu")->GetMutable<caffe2::TensorCPU>();
+input_blob_cpu.Resize(1, 3, 224, 224);
+input_blob_cpu.mutable_data<uint8_t>();
 
-std::string trainingExpectedOutputBlobName = "expectedOutputBlobName";
-caffe2::TensorCPU& expectedOutputBlob = *workspace.CreateBlob(trainingExpectedOutputBlobName)->GetMutable<caffe2::TensorCPU>();
-expectedOutputBlob.Resize(1, 1);
-expectedOutputBlob.mutable_data<int32_t>();
+//std::array<uint8_t, 3*224*224> cpu_input_buffer;
+//std::array<uint32_t, 1> cpu_expected_output_buffer;
+
+std::string training_expected_output_blob_name = "expected_output_blob_cpu";
+caffe2::TensorCPU& expected_output_blob_cpu = *workspace.CreateBlob(training_expected_output_blob_name)->GetMutable<caffe2::TensorCPU>();
+expected_output_blob_cpu.Resize(1, 1);
+expected_output_blob_cpu.mutable_data<int32_t>();
+
+//Define a GPU version of the blobs and a network to move data back and forth between them
+caffe2::TensorCUDA& input_blob_gpu = *workspace.CreateBlob("input_blob_gpu")->GetMutable<caffe2::TensorCUDA>();
+input_blob_gpu.Resize(1, 3, 224, 224);
+input_blob_gpu.mutable_data<uint8_t>();
+
+std::string training_expected_output_blob_name_gpu = "expected_output_blob_gpu";
+caffe2::TensorCUDA& expected_output_blob_gpu = *workspace.CreateBlob(training_expected_output_blob_name_gpu)->GetMutable<caffe2::TensorCUDA>();
+expected_output_blob_gpu.Resize(1, 1);
+expected_output_blob_gpu.mutable_data<int32_t>();
 
 //Define a VGG16 network
 GoodBot::VGG16Parameters VGG_param;
 
 VGG_param.Name = "0";
-VGG_param.InputBlobName = "inputBlob";
+VGG_param.InputBlobName = "input_blob_gpu";
 VGG_param.OutputBlobName = "outputBlob";
-VGG_param.TrainingExpectedOutputBlobName = "expectedOutputBlobName";
-VGG_param.TestExpectedOutputBlobName = "expectedOutputBlobName";
+VGG_param.TrainingExpectedOutputBlobName = training_expected_output_blob_name_gpu;
+VGG_param.TestExpectedOutputBlobName = training_expected_output_blob_name_gpu;
 VGG_param.BatchSize = 1;
 
 GoodBot::VGG16 network(VGG_param);
@@ -59,7 +78,7 @@ std::cout << module_name << std::endl << std::flush;
 */
 
 //Get the name of the loss blob
-std::cout << "Network has " << network.GetOutputBlobNames().size() << std::endl << std::flush;
+//std::cout << "Network has " << network.GetOutputBlobNames().size() << std::endl << std::flush;
 
 //Add a solver module for training/updating
 GoodBot::AdamSolverParameters solverParams;
@@ -67,7 +86,7 @@ solverParams.moduleName = "AdamSolver";
 solverParams.trainableParameterNames = network.GetTrainableBlobNames();
 solverParams.trainableParameterShapes = network.GetTrainableBlobShapes();
 
-network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
+//network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
 
 //Add function to allow printing of network architectures
 std::function<void(const google::protobuf::Message&)> print = [&](const google::protobuf::Message& inputMessage)
@@ -84,6 +103,7 @@ network.SetMode("TRAIN");
 
 //Initialize the network by automatically generating the NetDef for network initialization in "TRAIN" mode
 caffe2::NetDef trainingNetworkInitializationDefinition = network.GetInitializationNetwork();
+trainingNetworkInitializationDefinition.mutable_device_option()->set_device_type(caffe2::CUDA);
 
 //Print out the generated network architecture
 //print(trainingNetworkInitializationDefinition);
@@ -97,33 +117,43 @@ std::cout << "Network initialized" << std::endl << std::flush;
 
 //Automatically generate the training network
 caffe2::NetDef trainingNetworkDefinition = network.GetNetwork(workspace.Blobs());
+trainingNetworkDefinition.mutable_device_option()->set_device_type(caffe2::CUDA);
 
 std::cout << "Created training network" << std::endl << std::flush;
 
-print(trainingNetworkDefinition);
+//print(trainingNetworkDefinition);
 
 //Instance the training network implementation
 caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
 
-workspace.PrintBlobSizes();
+//workspace.PrintBlobSizes();
 
 //Setup IO with the training data set
 GoodBot::DataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint8_t), sizeof(int32_t), 100, 10, 1);
 
+GoodBot::DataSynchronizer synchronizer({{"input_blob_cpu", "input_blob_gpu"}, {"expected_output_blob_cpu", "expected_output_blob_gpu"}}, workspace);
+
 //Train the network
 int64_t numberOfTrainingIterations = 10000000;
 
-caffe2::TensorCPU& loss = *workspace.GetBlob("0_soft_max_training_loss")->GetMutable<caffe2::TensorCPU>();
+//caffe2::TensorCPU& loss = *workspace.GetBlob("0_soft_max_training_loss")->GetMutable<caffe2::TensorCPU>();
 
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {
 //Load data into blobs
-loader.ReadBlobs((char *) inputBlob.mutable_data<uint8_t>(), (char *) expectedOutputBlob.mutable_data<int32_t>(), 1);
+//loader.ReadBlobs((char *) cpu_input_buffer.data(), (char *) cpu_expected_output_buffer.data(), 1);
+loader.ReadBlobs((char *) input_blob_cpu.mutable_data<uint8_t>(), (char *) expected_output_blob_cpu.mutable_data<int32_t>(), 1);
+
+synchronizer.MoveCPUDataToGPU();
+
+//cuda_context.CopyBytes<caffe2::CPUContext, caffe2::CUDAContext>(3*224*224*sizeof(uint8_t), input_blob_cpu.mutable_data<uint8_t>(), input_blob_gpu.mutable_data<uint8_t>());
+
+//cuda_context.CopyBytes<caffe2::CPUContext, caffe2::CUDAContext>(3*224*224*sizeof(uint8_t), expected_output_blob_cpu.mutable_data<uint8_t>(), expected_output_blob_gpu.mutable_data<uint8_t>());
 
 //Run network with loaded instance
 trainingNetwork->Run();
 
-std::cout << "Training network iter " << iteration << " loss " << (*loss.mutable_data<float>()) << std::endl << std::flush;
+//std::cout << "Training network iter " << iteration << " loss " << (*loss.mutable_data<float>()) << std::endl << std::flush;
 }
 
 /*
@@ -145,11 +175,11 @@ std::ofstream pretrainedDeployResults("postTrainingDeployResults.csv");
 for(int64_t iteration = 0; iteration < trainingInputs.size(); iteration++)
 {
 //Load data into blobs to csv for viewing
-memcpy(inputBlob.mutable_data<float>(), &trainingInputs[iteration % trainingInputs.size()], inputBlob.nbytes());
+memcpy(input_blob_cpu.mutable_data<float>(), &trainingInputs[iteration % trainingInputs.size()], input_blob_cpu.nbytes());
 
 deployNetwork->Run();
 
-pretrainedDeployResults << *inputBlob.mutable_data<float>() << ", " << *networkOutput.mutable_data<float>() << ", " <<  *iter.mutable_data<int64_t>() << std::endl;
+pretrainedDeployResults << *input_blob_cpu.mutable_data<float>() << ", " << *networkOutput.mutable_data<float>() << ", " <<  *iter.mutable_data<int64_t>() << std::endl;
 }
 }
 */

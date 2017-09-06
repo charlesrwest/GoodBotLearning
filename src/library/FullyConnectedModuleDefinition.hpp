@@ -5,11 +5,6 @@
 namespace GoodBot
 {
 
-struct FullyConnectedModuleDefinitionParameters
-{
-
-};
-
 /**
 This class represents one or more fully connected layers sequentially connected to each other.  numberOfNodesInLayers determines how many neurons to have at each layer. 
 */
