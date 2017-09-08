@@ -13,12 +13,13 @@ class DataSynchronizer
 public:
 /**
 This function creates and registers the required operators with the given workspace.
+@param synchronizerName: Prefix to use for networks constructed by this object
 @param cpuThenGPUBlobNamePairs: A list of pairs of blobs to synchronize
 @param workspace: The caffe2 workspace the blobs live in
 
 @throws: This function can throw exceptions
 */
-DataSynchronizer(const std::vector<std::pair<std::string, std::string>>& cpuThenGPUBlobNamePairs, caffe2::Workspace& workspace);
+DataSynchronizer(const std::string& synchronizerName, const std::vector<std::pair<std::string, std::string>>& cpuThenGPUBlobNamePairs, caffe2::Workspace& workspace);
 
 /**
 This function activates the associated network to trigger a move of the data from the CPU blobs to the GPU blobs.

@@ -50,6 +50,9 @@ caffe2::Argument& dataType = *initializationOperator.add_arg();
 dataType.set_name("dtype");
 dataType.set_i(caffe2::TensorProto_DataType_INT64); 
 
+//Set as CPU blob
+initializationOperator.mutable_device_option()->set_device_type(caffe2::CPU);
+
 return results;
 }
 

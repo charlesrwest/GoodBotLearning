@@ -7,17 +7,18 @@ using namespace GoodBot;
 
 /**
 This function creates and registers the required operators with the given workspace.
+@param synchronizerName: Prefix to use for networks constructed by this object
 @param cpuThenGPUBlobNamePairs: A list of pairs of blobs to synchronize
 @param workspace: The caffe2 workspace the blobs live in
 
 @throws: This function can throw exceptions
 */
-DataSynchronizer::DataSynchronizer(const std::vector<std::pair<std::string, std::string>>& cpuThenGPUBlobNamePairs, caffe2::Workspace& workspace)
+DataSynchronizer::DataSynchronizer(const std::string& synchronizerName, const std::vector<std::pair<std::string, std::string>>& cpuThenGPUBlobNamePairs, caffe2::Workspace& workspace)
 {
 //Create network to move CPU -> GPU
 {
 CompositeComputeModuleDefinition cpu_to_gpu_module;
-cpu_to_gpu_module.SetName("DataSynchronizerToGPU");
+cpu_to_gpu_module.SetName(synchronizerName + "_to_gpu");
 for(const std::pair<std::string, std::string>& cpu_blob_gpu_blob : cpuThenGPUBlobNamePairs)
 {
 cpu_to_gpu_module.AddModule(*(new GoodBot::CopyCPUToGPUOperator("", cpu_blob_gpu_blob.first, cpu_blob_gpu_blob.second)));
@@ -32,10 +33,10 @@ CPUToGPUNetwork = workspace.CreateNet(cpu_to_gpu_network_definition);
 //Create network to move GPU -> CPU
 {
 CompositeComputeModuleDefinition gpu_to_cpu_module;
-gpu_to_cpu_module.SetName("DataSynchronizerToCPU");
+gpu_to_cpu_module.SetName(synchronizerName + "_to_cpu");
 for(const std::pair<std::string, std::string>& cpu_blob_gpu_blob : cpuThenGPUBlobNamePairs)
 {
-gpu_to_cpu_module.AddModule(*(new GoodBot::CopyCPUToGPUOperator("", cpu_blob_gpu_blob.second, cpu_blob_gpu_blob.first)));
+gpu_to_cpu_module.AddModule(*(new GoodBot::CopyGPUToCPUOperator("", cpu_blob_gpu_blob.second, cpu_blob_gpu_blob.first)));
 }
 
 gpu_to_cpu_module.SetMode("DEPLOY");

@@ -86,7 +86,7 @@ solverParams.moduleName = "AdamSolver";
 solverParams.trainableParameterNames = network.GetTrainableBlobNames();
 solverParams.trainableParameterShapes = network.GetTrainableBlobShapes();
 
-//network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
+network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
 
 //Add function to allow printing of network architectures
 std::function<void(const google::protobuf::Message&)> print = [&](const google::protobuf::Message& inputMessage)
@@ -121,7 +121,7 @@ trainingNetworkDefinition.mutable_device_option()->set_device_type(caffe2::CUDA)
 
 std::cout << "Created training network" << std::endl << std::flush;
 
-//print(trainingNetworkDefinition);
+print(trainingNetworkDefinition);
 
 //Instance the training network implementation
 caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
@@ -131,7 +131,22 @@ caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition
 //Setup IO with the training data set
 GoodBot::DataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint8_t), sizeof(int32_t), 100, 10, 1);
 
-GoodBot::DataSynchronizer synchronizer({{"input_blob_cpu", "input_blob_gpu"}, {"expected_output_blob_cpu", "expected_output_blob_gpu"}}, workspace);
+GoodBot::DataSynchronizer training_data_synchronizer("training_data_synchronizer", {{"input_blob_cpu", "input_blob_gpu"}, {"expected_output_blob_cpu", "expected_output_blob_gpu"}}, workspace);
+
+//Run network once so outputs are initialized
+loader.ReadBlobs((char *) input_blob_cpu.mutable_data<uint8_t>(), (char *) expected_output_blob_cpu.mutable_data<int32_t>(), 1);
+training_data_synchronizer.MoveCPUDataToGPU();
+trainingNetwork->Run();
+
+//Make blobs/data synchronizer to retrieve output and loss 
+std::string soft_max_cpu_name = "0_soft_max_soft_max_cpu";
+caffe2::TensorCPU& soft_max_cpu = *workspace.CreateBlob(soft_max_cpu_name)->GetMutable<caffe2::TensorCPU>();
+expected_output_blob_cpu.Resize(1, 1);
+expected_output_blob_cpu.mutable_data<int32_t>();
+
+GoodBot::DataSynchronizer output_synchronizer("output_synchronizer", {{soft_max_cpu_name, "0_soft_max_soft_max"}}, workspace);
+
+
 
 //Train the network
 int64_t numberOfTrainingIterations = 10000000;
@@ -141,17 +156,16 @@ int64_t numberOfTrainingIterations = 10000000;
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {
 //Load data into blobs
-//loader.ReadBlobs((char *) cpu_input_buffer.data(), (char *) cpu_expected_output_buffer.data(), 1);
 loader.ReadBlobs((char *) input_blob_cpu.mutable_data<uint8_t>(), (char *) expected_output_blob_cpu.mutable_data<int32_t>(), 1);
 
-synchronizer.MoveCPUDataToGPU();
-
-//cuda_context.CopyBytes<caffe2::CPUContext, caffe2::CUDAContext>(3*224*224*sizeof(uint8_t), input_blob_cpu.mutable_data<uint8_t>(), input_blob_gpu.mutable_data<uint8_t>());
-
-//cuda_context.CopyBytes<caffe2::CPUContext, caffe2::CUDAContext>(3*224*224*sizeof(uint8_t), expected_output_blob_cpu.mutable_data<uint8_t>(), expected_output_blob_gpu.mutable_data<uint8_t>());
+training_data_synchronizer.MoveCPUDataToGPU();
 
 //Run network with loaded instance
 trainingNetwork->Run();
+
+output_synchronizer.MoveGPUDataToCPU();
+
+std::cout << "Chugga: Expected " << (*expected_output_blob_cpu.mutable_data<int32_t>()) << " Output " << (*soft_max_cpu.mutable_data<int32_t>()) <<  std::endl << std::flush;
 
 //std::cout << "Training network iter " << iteration << " loss " << (*loss.mutable_data<float>()) << std::endl << std::flush;
 }
