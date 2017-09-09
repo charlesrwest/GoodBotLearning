@@ -185,7 +185,7 @@ trainingNetwork->Run();
 
 output_synchronizer.MoveGPUDataToCPU();
 
-if((iteration % 10) == 0)
+if((iteration % 500) == 0)
 {
 auto now = std::chrono::system_clock::now();
 auto now_c = std::chrono::system_clock::to_time_t(now);
