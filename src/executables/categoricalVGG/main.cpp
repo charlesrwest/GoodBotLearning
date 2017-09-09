@@ -15,6 +15,9 @@
 #include "caffe2/core/context_gpu.h"
 #include "DataLoader.hpp"
 #include "DataSynchronizer.hpp"
+#include "AveragedLossLayerDefinition.hpp"
+#include "LabelCrossEntropyOperator.hpp"
+#include<chrono>
 
 
 int main(int argc, char **argv)
@@ -64,7 +67,17 @@ VGG_param.BatchSize = 1;
 
 GoodBot::VGG16 network(VGG_param);
 
+//VGG outputs softmax
+//Training adds LabelCrossEntropy, then averaged loss
+
+network.AddModule(*(new GoodBot::LabelCrossEntropyOperator(network.Name() + "_label_cross_entropy", network.GetOutputBlobNames()[0], training_expected_output_blob_name_gpu)));
+
+network.AddModule(*(new GoodBot::AveragedLossLayerDefinition({network.GetOutputBlobNames()[0], network.Name() + "_averaged_loss"})));
+
+
 network.SetMode("TRAIN");
+
+//refactor vgg16 to output softmax and then make a composite module for averaged loss which is passthrough unless in training mode
 
 /*
 std::cout << "Network modules: " << std::endl << std::flush;
@@ -82,11 +95,11 @@ std::cout << module_name << std::endl << std::flush;
 
 //Add a solver module for training/updating
 GoodBot::AdamSolverParameters solverParams;
-solverParams.moduleName = "AdamSolver";
+solverParams.moduleName = network.Name() + "adam_solver";
 solverParams.trainableParameterNames = network.GetTrainableBlobNames();
 solverParams.trainableParameterShapes = network.GetTrainableBlobShapes();
 
-network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
+//network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
 
 //Add function to allow printing of network architectures
 std::function<void(const google::protobuf::Message&)> print = [&](const google::protobuf::Message& inputMessage)
@@ -138,20 +151,27 @@ loader.ReadBlobs((char *) input_blob_cpu.mutable_data<uint8_t>(), (char *) expec
 training_data_synchronizer.MoveCPUDataToGPU();
 trainingNetwork->Run();
 
+
 //Make blobs/data synchronizer to retrieve output and loss 
-std::string soft_max_cpu_name = "0_soft_max_soft_max_cpu";
+std::string soft_max_cpu_name = "0_soft_max_cpu";
 caffe2::TensorCPU& soft_max_cpu = *workspace.CreateBlob(soft_max_cpu_name)->GetMutable<caffe2::TensorCPU>();
-expected_output_blob_cpu.Resize(1, 1);
-expected_output_blob_cpu.mutable_data<int32_t>();
-
-GoodBot::DataSynchronizer output_synchronizer("output_synchronizer", {{soft_max_cpu_name, "0_soft_max_soft_max"}}, workspace);
+soft_max_cpu.Resize(1, 5);
+soft_max_cpu.mutable_data<float>();
 
 
+std::string averaged_loss_cpu_name = "0_averaged_loss_cpu";
+caffe2::TensorCPU& averaged_loss_cpu = *workspace.CreateBlob(averaged_loss_cpu_name)->GetMutable<caffe2::TensorCPU>();
+averaged_loss_cpu.Resize(1, 1);
+averaged_loss_cpu.mutable_data<float>();
+
+GoodBot::DataSynchronizer output_synchronizer("output_synchronizer", {{soft_max_cpu_name, "0_soft_max"}, {averaged_loss_cpu_name, "0_averaged_loss_averaged_loss"}}, workspace);
+
+//workspace.PrintBlobSizes();
 
 //Train the network
 int64_t numberOfTrainingIterations = 10000000;
 
-//caffe2::TensorCPU& loss = *workspace.GetBlob("0_soft_max_training_loss")->GetMutable<caffe2::TensorCPU>();
+std::ofstream log_file("log");
 
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {
@@ -165,7 +185,15 @@ trainingNetwork->Run();
 
 output_synchronizer.MoveGPUDataToCPU();
 
-std::cout << "Chugga: Expected " << (*expected_output_blob_cpu.mutable_data<int32_t>()) << " Output " << (*soft_max_cpu.mutable_data<int32_t>()) <<  std::endl << std::flush;
+if((iteration % 10) == 0)
+{
+auto now = std::chrono::system_clock::now();
+auto now_c = std::chrono::system_clock::to_time_t(now);
+
+log_file << "Chugga (" << std::put_time(std::localtime(&now_c), "%c") << "): Expected " << (*expected_output_blob_cpu.mutable_data<int32_t>()) << " Output " << (soft_max_cpu.mutable_data<float>()[0]) << " " << (soft_max_cpu.mutable_data<float>()[1]) << " " << (soft_max_cpu.mutable_data<float>()[2]) << " " << (soft_max_cpu.mutable_data<float>()[3]) << " " <<  (soft_max_cpu.mutable_data<float>()[4]) << " Loss: " << (averaged_loss_cpu.mutable_data<float>()[0]) << std::endl << std::flush;
+}
+
+//std::cout << "Hello" << std::endl << std::flush;
 
 //std::cout << "Training network iter " << iteration << " loss " << (*loss.mutable_data<float>()) << std::endl << std::flush;
 }

@@ -5,19 +5,13 @@
 namespace GoodBot
 {
 
-struct SoftMaxLayerDefinitionParameters
-{
-std::string inputBlobName;
-std::string layerName;
-};
-
 /**
 This class is a straight forward implementation of the "Softmax" operator (depending on mode).  See ComputeModuleDefinition for the function meanings.
 */
-class SoftMaxLayerDefinition : public ComputeModuleDefinition
+class LabelCrossEntropyOperator : public ComputeModuleDefinition
 {
 public:
-SoftMaxLayerDefinition(const SoftMaxLayerDefinitionParameters& inputParameters);
+LabelCrossEntropyOperator(const std::string& name, const std::string& softmaxBlobName, const std::string& labelBlobName);
 
 virtual std::vector<std::string> GetInputBlobNames() const override;
 
@@ -26,7 +20,8 @@ virtual std::vector<std::string> GetOutputBlobNames() const override;
 virtual std::vector<caffe2::OperatorDef> GetNetworkOperators() const override;
 
 protected:
-std::string inputBlobName;
+std::string SoftmaxBlobName;
+std::string LabelBlobName;
 };
 
 
