@@ -6,6 +6,7 @@
 #include "FullyConnectedModuleDefinition.hpp"
 #include "CastModule.hpp"
 #include "ScaleModule.hpp"
+#include "AddOperator.hpp"
 #include<iostream>
 
 using namespace GoodBot;
@@ -24,14 +25,15 @@ cast_parameters.OutputBlobName = casted_input_blob_name;
 
 AddModule(*(new CastModule(cast_parameters)));
 
+//Scale to range [0.0, 2.0]
 ScaleModuleParameters scale_parameters;
 scale_parameters.name = Name() + "_scale";
 scale_parameters.InputBlobName = casted_input_blob_name;
 scale_parameters.OutputBlobName = casted_input_blob_name;
-scale_parameters.Scale = 1.0 / 256.0;
+scale_parameters.Scale = 2.0*(1.0 / 256.0);
 
-AddModule(*(new ScaleModule(scale_parameters)));
-
+//Shift to [-1.0, 1.0]
+AddModule(*(new AddOperator(Name() + "_add", casted_input_blob_name, -1.0)));
 
 //Add cast operator to convert from uchar to float
 VGGConvolutionModuleParameters parameters;
@@ -60,7 +62,7 @@ AddModule(*(new VGGConvolutionModule(
 VGGConvolutionModuleParameters
 {
 parameters.LayerName,
-conv_index == 0 ? casted_input_blob_name : modules.back()->GetOutputBlobNames()[0],
+conv_index == 0 ? modules.back()->GetOutputBlobNames()[0] : modules.back()->GetOutputBlobNames()[0],
 parameters.LayerName,
 conv_index == 0 ? 3 : conv_parameters[conv_index-1].OutputDepth,
 parameters.OutputDepth,
