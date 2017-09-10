@@ -72,7 +72,7 @@ GoodBot::VGG16 network(VGG_param);
 
 network.AddModule(*(new GoodBot::LabelCrossEntropyOperator(network.Name() + "_label_cross_entropy", network.GetOutputBlobNames()[0], training_expected_output_blob_name_gpu)));
 
-network.AddModule(*(new GoodBot::AveragedLossLayerDefinition({network.GetOutputBlobNames()[0], network.Name() + "_averaged_loss"})));
+network.AddModule(*(new GoodBot::AveragedLossLayerDefinition({network.Name() + "_label_cross_entropy", network.Name() + "_averaged_loss"})));
 
 
 network.SetMode("TRAIN");
