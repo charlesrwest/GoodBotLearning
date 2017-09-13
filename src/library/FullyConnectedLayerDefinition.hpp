@@ -14,7 +14,7 @@ int64_t numberOfNodes = 0;
 std::string layerName;
 std::string weightFillType = "XavierFill";
 std::string biasFillType = "ConstantFill";
-std::string activationType = "Tanh";
+std::string activationType = "Relu";
 };
 
 /**

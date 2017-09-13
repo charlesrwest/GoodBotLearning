@@ -11,7 +11,7 @@ This class represents one or more fully connected layers sequentially connected 
 class FullyConnectedModuleDefinition : public CompositeComputeModuleDefinition
 {
 public:
-FullyConnectedModuleDefinition(const std::string& inputBlobName, const std::vector<int64_t>& numberOfNodesInLayers, const std::string& moduleName, int64_t numberOfInputs = 0, const std::string& weightFillType = "XavierFill", const std::string& biasFillType = "ConstantFill", const std::string& activationType = "Tanh");
+FullyConnectedModuleDefinition(const std::string& inputBlobName, const std::vector<int64_t>& numberOfNodesInLayers, const std::string& moduleName, int64_t numberOfInputs = 0, const std::string& weightFillType = "XavierFill", const std::string& biasFillType = "ConstantFill", const std::string& activationType = "Relu");
 
 virtual std::string Name() const override;
 
