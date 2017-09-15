@@ -72,7 +72,7 @@ parameters.NumberOfConvolutions
 }
 
 
-int64_t fully_connected_layers_size = 1;
+int64_t fully_connected_layers_size = 4096;
 
 //Add 2 fully connected layers with activations
 AddModule(*(new FullyConnectedModuleDefinition(
