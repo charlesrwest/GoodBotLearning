@@ -155,7 +155,7 @@ trainingNetwork->Run();
 //Make blobs/data synchronizer to retrieve output and loss 
 std::string soft_max_cpu_name = "0_soft_max_cpu";
 caffe2::TensorCPU& soft_max_cpu = *workspace.CreateBlob(soft_max_cpu_name)->GetMutable<caffe2::TensorCPU>();
-soft_max_cpu.Resize(1, 5);
+soft_max_cpu.Resize(1, 2);
 soft_max_cpu.mutable_data<float>();
 
 
@@ -185,12 +185,12 @@ trainingNetwork->Run();
 
 output_synchronizer.MoveGPUDataToCPU();
 
-if((iteration % 500) == 0)
+if((iteration % 100) == 0)
 {
 auto now = std::chrono::system_clock::now();
 auto now_c = std::chrono::system_clock::to_time_t(now);
 
-log_file << "Chugga (" << std::put_time(std::localtime(&now_c), "%c") << "): Expected " << (*expected_output_blob_cpu.mutable_data<int32_t>()) << " Output " << (soft_max_cpu.mutable_data<float>()[0]) << " " << (soft_max_cpu.mutable_data<float>()[1]) << " " << (soft_max_cpu.mutable_data<float>()[2]) << " " << (soft_max_cpu.mutable_data<float>()[3]) << " " <<  (soft_max_cpu.mutable_data<float>()[4]) << " Loss: " << (averaged_loss_cpu.mutable_data<float>()[0]) << std::endl << std::flush;
+log_file << (*expected_output_blob_cpu.mutable_data<int32_t>()) << ", " << (soft_max_cpu.mutable_data<float>()[0]) << ", " << (soft_max_cpu.mutable_data<float>()[1]) << ", " << (averaged_loss_cpu.mutable_data<float>()[0]) << std::endl << std::flush;
 }
 
 //std::cout << "Hello" << std::endl << std::flush;

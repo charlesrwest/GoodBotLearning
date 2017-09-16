@@ -87,7 +87,7 @@ Name() + "_fc1",
 modules.back()->GetOutputBlobNames()[0],
 Name() + "_fc1",
 fully_connected_layers_size,
-5,
+2,
 1
 )));
 
