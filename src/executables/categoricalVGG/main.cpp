@@ -185,12 +185,14 @@ trainingNetwork->Run();
 
 output_synchronizer.MoveGPUDataToCPU();
 
-if((iteration % 100) == 0)
-{
 auto now = std::chrono::system_clock::now();
 auto now_c = std::chrono::system_clock::to_time_t(now);
 
-log_file << (*expected_output_blob_cpu.mutable_data<int32_t>()) << ", " << (soft_max_cpu.mutable_data<float>()[0]) << ", " << (soft_max_cpu.mutable_data<float>()[1]) << ", " << (averaged_loss_cpu.mutable_data<float>()[0]) << std::endl << std::flush;
+log_file << (*expected_output_blob_cpu.mutable_data<int32_t>()) << ", " << (soft_max_cpu.mutable_data<float>()[0]) << ", " << (soft_max_cpu.mutable_data<float>()[1]) << ", " << (averaged_loss_cpu.mutable_data<float>()[0]) << std::endl;
+
+if((iteration % 100) == 0)
+{
+log_file << std::flush;
 }
 
 //std::cout << "Hello" << std::endl << std::flush;
