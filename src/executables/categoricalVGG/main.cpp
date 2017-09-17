@@ -171,7 +171,10 @@ GoodBot::DataSynchronizer output_synchronizer("output_synchronizer", {{soft_max_
 //Train the network
 int64_t numberOfTrainingIterations = 10000000;
 
-std::ofstream log_file("log");
+double exponential_moving_average = 0.0;
+double exponential_moving_average_divisor = 1000.0;
+
+std::ofstream log_file("log.csv");
 
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {
@@ -188,11 +191,13 @@ output_synchronizer.MoveGPUDataToCPU();
 auto now = std::chrono::system_clock::now();
 auto now_c = std::chrono::system_clock::to_time_t(now);
 
-log_file << (*expected_output_blob_cpu.mutable_data<int32_t>()) << ", " << (soft_max_cpu.mutable_data<float>()[0]) << ", " << (soft_max_cpu.mutable_data<float>()[1]) << ", " << (averaged_loss_cpu.mutable_data<float>()[0]) << std::endl;
+exponential_moving_average = exponential_moving_average*((exponential_moving_average_divisor-1.0)/exponential_moving_average_divisor) + averaged_loss_cpu.mutable_data<float>()[0]/exponential_moving_average_divisor;
 
 if((iteration % 100) == 0)
 {
-log_file << std::flush;
+std::cout << (*expected_output_blob_cpu.mutable_data<int32_t>()) << ", " << (soft_max_cpu.mutable_data<float>()[0]) << ", " << (soft_max_cpu.mutable_data<float>()[1]) << ", " << (averaged_loss_cpu.mutable_data<float>()[0]) << ", " << exponential_moving_average << std::endl;
+
+std::cout << std::flush;
 }
 
 //std::cout << "Hello" << std::endl << std::flush;
