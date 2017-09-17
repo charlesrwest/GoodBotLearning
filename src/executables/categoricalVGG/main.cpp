@@ -142,7 +142,7 @@ caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition
 //workspace.PrintBlobSizes();
 
 //Setup IO with the training data set
-GoodBot::DataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint8_t), sizeof(int32_t), 100, 10, 1);
+GoodBot::DataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint8_t), sizeof(int32_t), 10, 10, 1);
 
 GoodBot::DataSynchronizer training_data_synchronizer("training_data_synchronizer", {{"input_blob_cpu", "input_blob_gpu"}, {"expected_output_blob_cpu", "expected_output_blob_gpu"}}, workspace);
 
