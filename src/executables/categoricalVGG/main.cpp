@@ -195,9 +195,9 @@ exponential_moving_average = exponential_moving_average*((exponential_moving_ave
 
 if((iteration % 100) == 0)
 {
-std::cout << (*expected_output_blob_cpu.mutable_data<int32_t>()) << ", " << (soft_max_cpu.mutable_data<float>()[0]) << ", " << (soft_max_cpu.mutable_data<float>()[1]) << ", " << (averaged_loss_cpu.mutable_data<float>()[0]) << ", " << exponential_moving_average << std::endl;
+log_file << (*expected_output_blob_cpu.mutable_data<int32_t>()) << ", " << (soft_max_cpu.mutable_data<float>()[0]) << ", " << (soft_max_cpu.mutable_data<float>()[1]) << ", " << (averaged_loss_cpu.mutable_data<float>()[0]) << ", " << exponential_moving_average << std::endl;
 
-std::cout << std::flush;
+log_file << std::flush;
 }
 
 //std::cout << "Hello" << std::endl << std::flush;
