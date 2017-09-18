@@ -21,10 +21,10 @@ int64_t number_of_examples_in_file = FileSizeInBytes/(inputBlobSize + outputBlob
 
 if(number_of_examples_in_file < numberOfBlobsPerBuffer)
 {
-throw SOM_EXCEPTION("Data file is too small, there are less examples then a single buffer");
+throw SOM_EXCEPTION("Data file is too small, there are less examples (" + std::to_string(number_of_examples_in_file) + ") then a single buffer " + std::to_string(numberOfBlobsPerBuffer));
 }
 
-FileBlobIndexSelector = std::uniform_int_distribution<int64_t>(0, number_of_examples_in_file - 1 - numberOfBlobsPerBuffer);
+FileBlobIndexSelector = std::uniform_int_distribution<int64_t>(0, number_of_examples_in_file - numberOfBlobsPerBuffer);
 
 //Intitialize buffers
 RandomBlobIndexBuffers.resize(numberOfBuffers);
