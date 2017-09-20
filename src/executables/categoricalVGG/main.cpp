@@ -99,7 +99,7 @@ solverParams.moduleName = network.Name() + "adam_solver";
 solverParams.trainableParameterNames = network.GetTrainableBlobNames();
 solverParams.trainableParameterShapes = network.GetTrainableBlobShapes();
 
-//network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
+network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
 
 //Add function to allow printing of network architectures
 std::function<void(const google::protobuf::Message&)> print = [&](const google::protobuf::Message& inputMessage)
@@ -204,34 +204,6 @@ log_file << std::flush;
 
 //std::cout << "Training network iter " << iteration << " loss " << (*loss.mutable_data<float>()) << std::endl << std::flush;
 }
-
-/*
-//Create the deploy version of the network
-network.SetMode("DEPLOY");
-
-caffe2::NetDef deployNetworkDefinition = network.GetNetwork(workspace.Blobs());
-
-caffe2::NetBase* deployNetwork = workspace.CreateNet(deployNetworkDefinition);
-
-//Get the blob for network output/iteration count for later testing
-caffe2::TensorCPU& networkOutput = *workspace.GetBlob(network.GetOutputBlobNames()[0])->GetMutable<caffe2::TensorCPU>();
-
-caffe2::TensorCPU& iter = *workspace.GetBlob("AdamSolver_iteration_iterator")->GetMutable<caffe2::TensorCPU>();
-
-//Output deploy results
-{
-std::ofstream pretrainedDeployResults("postTrainingDeployResults.csv");
-for(int64_t iteration = 0; iteration < trainingInputs.size(); iteration++)
-{
-//Load data into blobs to csv for viewing
-memcpy(input_blob_cpu.mutable_data<float>(), &trainingInputs[iteration % trainingInputs.size()], input_blob_cpu.nbytes());
-
-deployNetwork->Run();
-
-pretrainedDeployResults << *input_blob_cpu.mutable_data<float>() << ", " << *networkOutput.mutable_data<float>() << ", " <<  *iter.mutable_data<int64_t>() << std::endl;
-}
-}
-*/
 
 return 0;
 } 
