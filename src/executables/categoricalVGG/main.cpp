@@ -164,7 +164,7 @@ caffe2::TensorCPU& averaged_loss_cpu = *workspace.CreateBlob(averaged_loss_cpu_n
 averaged_loss_cpu.Resize(1, 1);
 averaged_loss_cpu.mutable_data<float>();
 
-GoodBot::DataSynchronizer output_synchronizer("output_synchronizer", {{soft_max_cpu_name, "0_soft_max"}, {averaged_loss_cpu_name, "0_averaged_loss_averaged_loss"}}, workspace);
+GoodBot::DataSynchronizer output_synchronizer("output_synchronizer", {{soft_max_cpu_name, "0_soft_max"}, {averaged_loss_cpu_name, "0_averaged_loss"}}, workspace);
 
 //workspace.PrintBlobSizes();
 

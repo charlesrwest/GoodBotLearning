@@ -27,7 +27,7 @@ if(Mode() == "DEPLOY")
 return {inputBlobName}; //Pass through
 }
 
-return {GetAveragedLossOutputBlobName()};
+return {Name()};
 }
 
 std::vector<caffe2::OperatorDef> AveragedLossLayerDefinition::GetNetworkOperators() const
@@ -40,7 +40,7 @@ results.emplace_back();
 caffe2::OperatorDef& averageLossOperator = results.back();
 averageLossOperator.set_type("AveragedLoss");
 averageLossOperator.add_input(inputBlobName);
-averageLossOperator.add_output(GetAveragedLossOutputBlobName());
+averageLossOperator.add_output(Name());
 
 return results;
 }
@@ -60,8 +60,8 @@ results.emplace_back();
 caffe2::OperatorDef& averageLossLoopBackOperator = results.back();
 
 averageLossLoopBackOperator.set_type("ConstantFill");
-averageLossLoopBackOperator.add_input(GetAveragedLossOutputBlobName());
-averageLossLoopBackOperator.add_output(MakeGradientOperatorBlobName(GetAveragedLossOutputBlobName()));
+averageLossLoopBackOperator.add_input(Name());
+averageLossLoopBackOperator.add_output(MakeGradientOperatorBlobName(Name()));
 averageLossLoopBackOperator.set_is_gradient_op(true);
 caffe2::Argument& argument = *averageLossLoopBackOperator.add_arg();
 argument.set_name("value");
@@ -79,5 +79,5 @@ return {};
 
 std::string AveragedLossLayerDefinition::GetAveragedLossOutputBlobName() const
 {
-return Name() + "_averaged_loss";
+return Name();
 }

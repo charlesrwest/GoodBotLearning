@@ -38,4 +38,6 @@ operator_def.add_output(GetOutputBlobNames()[0]);
 
 return results;
 }
+
+return {};
 }

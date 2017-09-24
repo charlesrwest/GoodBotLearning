@@ -61,7 +61,6 @@ The default implementation of this function returns an order list of all module 
 */
 virtual std::vector<std::string> GetModuleNames() const;
 
-protected:
 std::vector<std::unique_ptr<ComputeModuleDefinition>> modules;
 };
 

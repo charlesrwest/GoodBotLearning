@@ -1,9 +1,10 @@
-#ifndef SOMEXCEPTIONHPP
-#define SOMEXCEPTIONHPP
+#pragma once
 
 #ifndef SOM_EXCEPTION
 #define SOM_EXCEPTION(errorMessage) SOMException(errorMessage, UNKNOWN, __FILE__, __LINE__)
 #endif
+
+#define SOM_ASSERT(condition, message) if(!(condition)) { throw SOMException(message, UNKNOWN, __FILE__, __LINE__); };
 
 #ifndef SOM_TRY
 #define SOM_TRY try {
@@ -131,6 +132,3 @@ The FILE macro normally returns the entire path for a source file.  This constex
 //constexpr const char *trimToBaseName(const char *inputFullFilePath);
 
 
-
-
-#endif
