@@ -8,6 +8,13 @@ namespace GoodBot
 {
 
 /**
+This function returns true if the the pattern is found at the beginning of the string.
+@param pattern: The pattern to check for
+@param text: The text to check for the pattern in
+*/
+bool StringAtStart(const std::string& pattern, const std::string& text);
+
+/**
 This function generates a (capitalized) hex string using rand() to select digits.
 @inputLength:How many digits the string should have
 @return: The generated string

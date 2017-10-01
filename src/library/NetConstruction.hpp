@@ -43,18 +43,20 @@ void AddConstantFillOp(const std::string& opName, const std::string& outputName,
 
 void AddXavierOp(const std::string& opName, const std::string& outputName, const std::vector<int64_t>& blobDimensions, const std::vector<std::string>& activeModes, bool isTrainable, NetSpace& netspace);
 
-void AddFullyConnectedOp(const std::string& opName, const std::string& inputName, const std::string& weightsName, const std::string& biasName, const std::string& outputName, NetSpace& netspace);
+void AddFullyConnectedOp(const std::string& opName, const std::string& inputName, const std::string& weightsName, const std::string& biasName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
-//void AddReluOp(const std::string& opName, const std::string& inputName, const std::string& outputName, NetSpace& netspace);
+void AddReluOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
-//void AddTanhOp(const std::string& opName, const std::string& inputName, const std::string& outputName, NetSpace& netspace);
+void AddTanhOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
-//void AddFullyConnectedModule(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputSize, const std::string& weightFillType = "XavierFill", const std::string& biasFillType = "ConstantFill");
+void AddFullyConnectedModule(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputSize, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace);
+
+void AddFullyConnectedModuleWithActivation(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputSize, const std::string& activationType, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace);
 
 template<class DType>
 void AddConstantFillOp(const std::string& opName, const std::string& outputName, DType value,  caffe2::TensorProto::DataType type, const std::vector<int64_t>& blobDimensions, const std::vector<std::string>& activeModes, bool isTrainable, NetSpace& netspace)
 {
-NetOp op(GoodBot::CreateOpDef(opName, {}, {outputName}, "Constant", {{"shape", blobDimensions}, {"value", value}, {"dtype", type}}), activeModes, isTrainable);
+NetOp op(GoodBot::CreateOpDef(opName, {}, {outputName}, "ConstantFill", {{"shape", blobDimensions}, {"value", value}, {"dtype", type}}), activeModes, isTrainable);
 
 netspace.AddNetOp(op);
 }

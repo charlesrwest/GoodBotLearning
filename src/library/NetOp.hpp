@@ -21,7 +21,7 @@ bool IsTrainable() const;
 
 private:
 caffe2::OperatorDef OperatorDef;
-const std::vector<std::string>& ActiveModes;
+std::vector<std::string> ActiveModes;
 bool Trainable;
 };
 
@@ -33,7 +33,8 @@ bool HasInputBlob(const std::string& blobName, const NetOp& op);
 bool HasOutputBlob(const std::string& blobName, const NetOp& op); 
 bool CreatesBlob(const std::string& blobName, const NetOp& op);
 
-
+//Returns null if the OperatorDef doesn't have the given argument.
+const caffe2::Argument* GetArgument(const std::string& argumentName, const caffe2::OperatorDef& opDef);
 
 
 

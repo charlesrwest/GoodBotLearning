@@ -80,3 +80,18 @@ bool GoodBot::CreatesBlob(const std::string& blobName, const NetOp& op)
 {
 return (!HasInputBlob(blobName, op)) && HasOutputBlob(blobName, op);
 }
+
+const caffe2::Argument* GoodBot::GetArgument(const std::string& argumentName, const caffe2::OperatorDef& opDef)
+{
+for(int64_t arg_index = 0; arg_index < opDef.arg_size(); arg_index++)
+{
+const caffe2::Argument& arg = opDef.arg(arg_index);
+
+if(arg.name() == argumentName)
+{
+return &arg;
+}
+}
+
+return nullptr;
+}

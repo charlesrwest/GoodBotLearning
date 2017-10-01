@@ -83,7 +83,7 @@ REQUIRE(constant_fill_op_def.name() == net_fill_name);
 REQUIRE(constant_fill_op_def.input_size() == 0);
 REQUIRE(constant_fill_op_def.output_size() == 1);
 REQUIRE(constant_fill_op_def.output(0) == "constant_fill_blob");
-REQUIRE(constant_fill_op_def.type() == "Constant");
+REQUIRE(constant_fill_op_def.type() == "ConstantFill");
 REQUIRE(constant_fill_op_def.arg_size() == 3);
 
 const caffe2::Argument& constant_fill_shape_arg = constant_fill_op_def.arg(0);
@@ -103,21 +103,63 @@ REQUIRE(constant_fill_dtype_arg.i() == caffe2::TensorProto_DataType_FLOAT);
 }
 
 
-//Make sure we can at least train a simple fully connected network
-TEST_CASE("Test generated Fully Connected NetDefs", "[Example]")
+//Returns <inputs, outputs>
+std::pair<std::vector<float>, std::vector<float>> MakeSineApproximationTrainingData(int64_t numberOfTrainingExamples)
 {
-//Make 10000 training examples
-int64_t numberOfTrainingExamples = 1000;
-int64_t batch_size = 2;
-REQUIRE((numberOfTrainingExamples % batch_size) == 0);
-std::vector<float> trainingInputs;
-std::vector<float> trainingExpectedOutputs;
+std::pair<std::vector<float>, std::vector<float>> results;
+std::vector<float>& trainingInputs = results.first;
+std::vector<float>& trainingExpectedOutputs = results.second;
 
 for(int64_t trainingExampleIndex = 0; trainingExampleIndex < numberOfTrainingExamples; trainingExampleIndex++)
 {
 trainingInputs.emplace_back((((double) trainingExampleIndex)/(numberOfTrainingExamples+1))*2.0 - 1.0);
 trainingExpectedOutputs.emplace_back(sin(((double) trainingExampleIndex)/(numberOfTrainingExamples+1)*2.0*PI));
 }
+
+return results;
+}
+
+bool BlobNamesFound(const std::vector<std::string>& blobNames, const caffe2::Workspace& workspace)
+{
+std::vector<std::string> current_blobs = workspace.Blobs();
+
+std::cout << "Current blobs:" << std::endl;
+
+for(const std::string& blob_name : current_blobs)
+{
+std::cout << blob_name << std::endl;
+}
+
+for(const std::string& blob_name : blobNames)
+{
+if(std::find(current_blobs.begin(), current_blobs.end(), blob_name) == current_blobs.end())
+{
+return false;
+}
+}
+
+return true;
+}
+
+bool BlobShapeMatches(const std::string& blobName, const std::vector<int64_t>& expectedShape, const caffe2::Workspace& workspace)
+{
+caffe2::TensorCPU tensor = GoodBot::GetTensor(*workspace.GetBlob(blobName));
+
+return expectedShape == tensor.dims();
+}
+
+//Make sure we can at least train a simple fully connected network
+TEST_CASE("Test netspace sine approximation", "[Example]")
+{
+//Make 10000 training examples
+int64_t numberOfTrainingExamples = 1000;
+int64_t batch_size = 2;
+REQUIRE((numberOfTrainingExamples % batch_size) == 0);
+
+std::vector<float> trainingInputs;
+std::vector<float> trainingExpectedOutputs;
+
+std::tie(trainingInputs, trainingExpectedOutputs) = MakeSineApproximationTrainingData(numberOfTrainingExamples);
 
 //Shuffle the examples
 PairedRandomShuffle(trainingInputs, trainingExpectedOutputs);
@@ -126,6 +168,22 @@ PairedRandomShuffle(trainingInputs, trainingExpectedOutputs);
 caffe2::Workspace workspace;
 caffe2::CPUContext context;
 
+GoodBot::NetSpace netspace(workspace);
+
+//Add operators to create input blobs
+GoodBot::AddConstantFillOp("init_interfaces_input", "input_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 1}, {"INIT"}, false, netspace);
+GoodBot::AddConstantFillOp("init_interfaces_expected_output", "expected_output_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 1}, {"INIT"}, false, netspace);
+
+//Create input blobs
+caffe2::NetDef input_init_network = GoodBot::GetNetwork("init_interfaces", "INIT", netspace);
+caffe2::NetBase* init_interfaces_net = workspace.CreateNet(input_init_network);
+init_interfaces_net->Run();
+
+REQUIRE(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace));
+REQUIRE(BlobShapeMatches("input_blob", {1, 1}, workspace));
+REQUIRE(BlobShapeMatches("expected_output_blob", {1, 1}, workspace));
+
+/*
 //Create the blobs to inject the sine input/output for training
 caffe2::TensorCPU& inputBlob = *workspace.CreateBlob("inputBlob")->GetMutable<caffe2::TensorCPU>();
 inputBlob.Resize(batch_size, 1);
@@ -157,6 +215,78 @@ solverParams.trainableParameterNames = network.GetTrainableBlobNames();
 solverParams.trainableParameterShapes = network.GetTrainableBlobShapes();
 
 network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
+
+SECTION("Test training network", "[networkArchitecture]")
+{
+//Training the network, so set the mode to train
+network.SetMode("TRAIN");
+
+//Initialize the network by automatically generating the NetDef for network initialization in "TRAIN" mode
+caffe2::NetDef trainingNetworkInitializationDefinition = network.GetInitializationNetwork();
+
+//Create and run the initialization network.
+caffe2::NetBase* initializationNetwork = workspace.CreateNet(trainingNetworkInitializationDefinition);
+initializationNetwork->Run();
+
+//Automatically generate the training network
+caffe2::NetDef trainingNetworkDefinition = network.GetNetwork(workspace.Blobs());
+
+//Instance the training network implementation
+caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
+
+//Create the deploy version of the network
+network.SetMode("DEPLOY");
+
+caffe2::NetDef deployNetworkDefinition = network.GetNetwork(workspace.Blobs());
+caffe2::NetBase* deployNetwork = workspace.CreateNet(deployNetworkDefinition);
+
+//Get the blob for network output/iteration count for later testing
+caffe2::TensorCPU& networkOutput = *workspace.GetBlob(network.GetOutputBlobNames()[0])->GetMutable<caffe2::TensorCPU>();
+
+caffe2::TensorCPU& iter = *workspace.GetBlob("AdamSolver_iteration_iterator")->GetMutable<caffe2::TensorCPU>();
+
+//Train the network
+int64_t numberOfTrainingIterations = 100000;
+
+for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
+{
+//Shuffle data every epoc through
+if((iteration % trainingInputs.size()) == 0)
+{
+PairedRandomShuffle(trainingInputs, trainingExpectedOutputs);
+}
+
+//Load data into blobs
+memcpy(inputBlob.mutable_data<float>(), &trainingInputs[iteration % trainingInputs.size()], inputBlob.nbytes());
+memcpy(expectedOutputBlob.mutable_data<float>(), &trainingExpectedOutputs[iteration % trainingExpectedOutputs.size()], expectedOutputBlob.nbytes());
+
+//Run network with loaded instance
+trainingNetwork->Run();
+}
+
+
+{
+double maximum_deviation = 0.0;
+double average_deviation = 0.0;
+for(int64_t iteration = 0; iteration < trainingInputs.size(); iteration++)
+{
+//Load data into blobs to csv for viewing
+memcpy(inputBlob.mutable_data<float>(), &trainingInputs[iteration], inputBlob.nbytes());
+
+deployNetwork->Run();
+
+double deviation = fabs((*networkOutput.mutable_data<float>()) - trainingExpectedOutputs[iteration]);
+
+maximum_deviation = std::max( deviation, maximum_deviation);
+average_deviation += deviation/trainingInputs.size();
+}
+
+REQUIRE(average_deviation < .1);
+}
+
+}
+}
+
 
 
 SECTION("Test training network", "[networkArchitecture]")
@@ -228,6 +358,7 @@ REQUIRE(average_deviation < .1);
 }
 
 }
+*/
 
 }
 

@@ -177,7 +177,67 @@ NetOp op(GoodBot::CreateOpDef(opName, {}, {outputName}, "XavierFill", {{"shape",
 netspace.AddNetOp(op);
 }
 
-void GoodBot::AddFullyConnectedOp(const std::string& opName, const std::string& inputName, const std::string& weightsName, const std::string& biasName, const std::string& outputName, NetSpace& netspace)
+void GoodBot::AddFullyConnectedOp(const std::string& opName, const std::string& inputName, const std::string& weightsName, const std::string& biasName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
 {
+NetOp op(GoodBot::CreateOpDef(opName, {inputName, weightsName, biasName}, {outputName}, "FC", {}), activeModes, false);
+
+netspace.AddNetOp(op);
 }
 
+void GoodBot::AddReluOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "Relu", {}), activeModes, false);
+
+netspace.AddNetOp(op);
+}
+
+void GoodBot::AddTanhOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "Tanh", {}), activeModes, false);
+
+netspace.AddNetOp(op);
+}
+
+void GoodBot::AddFullyConnectedModule(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputSize, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace)
+{
+std::vector<int64_t> inputBlobShape = GetBlobShape(inputName, netspace);
+SOM_ASSERT(inputBlobShape.size() >= 2, "Need batch size as part of blob dimension");
+
+int64_t batch_size = inputBlobShape[0];
+int64_t inputSize = 1;
+for(int64_t inputShapeIndex = 1; inputShapeIndex < inputBlobShape.size(); inputShapeIndex++)
+{
+inputSize *= inputBlobShape[inputShapeIndex];
+}
+
+//Add initialization operators
+SOM_ASSERT(weightFillType == "XavierFill", "Unsupported fill type");
+std::string weight_name = opName+"_weight_fill";
+AddXavierOp(weight_name, weight_name, {outputSize, inputSize}, {"INIT"}, true, netspace);
+
+SOM_ASSERT(biasFillType == "ConstantFill", "Unsupported fill type");
+std::string bias_name = opName+"_bias_fill";
+AddConstantFillOp(bias_name, bias_name, 0.0f, caffe2::TensorProto::FLOAT, {outputSize}, {"INIT"}, true, netspace);
+
+//Add operators
+std::string fc_name = opName + "_fc";
+AddFullyConnectedOp(fc_name, inputName, weight_name, bias_name, outputName, {}, netspace);
+}
+
+void GoodBot::AddFullyConnectedModuleWithActivation(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputSize, const std::string& activationType, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace)
+{
+AddFullyConnectedModule(opName+"_m", inputName, outputName, outputSize, weightFillType, biasFillType, netspace);
+
+if(activationType == "Relu")
+{
+AddReluOp(opName+"_relu", outputName, outputName, {}, netspace);
+}
+else if(activationType == "Tanh")
+{
+AddTanhOp(opName+"_tanh", outputName, outputName, {}, netspace);
+}
+else
+{
+SOM_ASSERT(false, "Unsupported activation type");
+}
+}

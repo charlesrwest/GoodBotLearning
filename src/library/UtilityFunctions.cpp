@@ -5,6 +5,11 @@
 
 using namespace GoodBot;
 
+bool GoodBot::StringAtStart(const std::string& pattern, const std::string& text)
+{
+return text.find(pattern) == 0;
+}
+
 /**
 This function generates a (capitalized) hex string using rand() to select digits.
 @inputLength:How many digits the string should have
