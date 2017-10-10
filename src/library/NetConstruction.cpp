@@ -1,5 +1,6 @@
 #include "NetConstruction.hpp"
 #include "SOMException.hpp"
+#include "UtilityFunctions.hpp"
 
 using namespace GoodBot;
 
@@ -182,6 +183,7 @@ void GoodBot::AddFullyConnectedOp(const std::string& opName, const std::string& 
 NetOp op(GoodBot::CreateOpDef(opName, {inputName, weightsName, biasName}, {outputName}, "FC", {}), activeModes, false);
 
 netspace.AddNetOp(op);
+
 }
 
 void GoodBot::AddReluOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
@@ -240,4 +242,122 @@ else
 {
 SOM_ASSERT(false, "Unsupported activation type");
 }
+}
+
+void GoodBot::AddSquaredL2DistanceOp(const std::string& opName, const std::string& firstInputName, const std::string& secondInputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {firstInputName, secondInputName}, {outputName}, "SquaredL2Distance", {}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddNetworkGradientLoopBack(const std::string& opName, const std::string& inputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {MakeGradientOperatorBlobName(inputName)}, "ConstantFill", {{"value", 1.0f}, {"dtype", caffe2::TensorProto::FLOAT}}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddAveragedLossOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "AveragedLoss", {}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddGradientOperators(const NetOp& op, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+std::vector<caffe2::OperatorDef> gradient_operators = GetGradientOperatorsFromOperator(op.GetOperatorDef());
+
+for(const caffe2::OperatorDef& opDef : gradient_operators)
+{
+netspace.AddNetOp(NetOp(opDef, activeModes, false));
+}
+}
+
+void GoodBot::AddGradientOperators(const std::string& networkName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+std::vector<NetOp> ops = GetActiveNetOps(networkName, activeModes, true, netspace);
+
+for(const NetOp& op : ops)
+{
+    if(!MakesGradients(op))
+    {
+        continue;
+    }
+
+    std::vector<caffe2::OperatorDef> gradient_operators = GetGradientOperatorsFromOperator(op.GetOperatorDef());
+
+    for(int64_t gradient_def_index = 0; gradient_def_index < gradient_operators.size(); gradient_def_index++)
+    {
+        caffe2::OperatorDef opDef = gradient_operators[gradient_def_index];
+        (*opDef.mutable_name()) = op.GetName() + "_grad_" + std::to_string(gradient_def_index);
+
+        netspace.AddNetOp(NetOp(opDef, activeModes, false));
+    }
+}
+}
+
+void GoodBot::AddAdamOp(const std::string& opName, const std::string& blobToUpdateName, const std::string& learningRateName, const std::string& iteratorName, const std::string& moment1Name, const std::string& moment2Name, const std::vector<std::string>& activeModes, NetSpace& netspace, float beta1, float beta2, float epsilon)
+{
+    NetOp op(
+                GoodBot::CreateOpDef(opName,
+    {blobToUpdateName, moment1Name, moment2Name, MakeGradientOperatorBlobName(blobToUpdateName), learningRateName, iteratorName},
+    {blobToUpdateName, moment1Name, moment2Name},
+                                     "Adam", {{"beta1", beta1}, {"beta2", beta2}, {"epsilon", epsilon}}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+
+void GoodBot::AddAdamSolvers(const std::string& networkName, NetSpace& netspace, float beta1, float beta2, float epsilon, float learningRate)
+{
+    std::vector<std::string> trainable_blobs = GetTrainableBlobs(networkName, {}, netspace);
+
+    if(trainable_blobs.size() == 0)
+    {
+        //Nothing to train, so do nothing
+        return;
+    }
+
+    //Make iterator blob/operator
+    std::string iter_blob_name = networkName+"_adam_iteration_count";
+    AddConstantFillOp(iter_blob_name, iter_blob_name, (int64_t) 0, caffe2::TensorProto::INT64, {1}, {"INIT"}, false, netspace );
+    AddIterOp(networkName+"_adam_iter", networkName+"_adam_iter", {"TRAIN"}, netspace);
+
+    //Make learning rate blob
+    std::string learning_rate_blob_name = networkName+"_adam_learning_rate";
+    AddConstantFillOp(learning_rate_blob_name, learning_rate_blob_name, learningRate,  caffe2::TensorProto::FLOAT, {1}, {"INIT"}, false, netspace);
+
+    //Make moment blobs/adam operators
+    for(const std::string& trainable_blob : trainable_blobs)
+    {
+        std::string momentum_1_name = trainable_blob + "_moment_1";
+        std::string momentum_2_name = trainable_blob + "_moment_2";
+
+        AddConstantFillOp(momentum_1_name, momentum_1_name, 0.0f,  caffe2::TensorProto::FLOAT, GetBlobShape(trainable_blob, netspace), {"INIT"}, false, netspace);
+        AddConstantFillOp(momentum_2_name, momentum_2_name, 0.0f,  caffe2::TensorProto::FLOAT, GetBlobShape(trainable_blob, netspace), {"INIT"}, false, netspace);
+        AddAdamOp(trainable_blob + "_solver", trainable_blob, learning_rate_blob_name, iter_blob_name, momentum_1_name, momentum_2_name, {"TRAIN"}, netspace, beta1, beta2, epsilon);
+    }
+}
+
+void GoodBot::AddIterOp(const std::string& opName, const std::string& inputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {inputName}, "Iter", {}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddSoftMaxOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "Softmax", {}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddLabelCrossEntropyOp(const std::string& opName, const std::string& inputName, const std::string& expectedInputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName, expectedInputName}, {outputName}, "LabelCrossEntropy", {}), activeModes, false);
+
+    netspace.AddNetOp(op);
 }

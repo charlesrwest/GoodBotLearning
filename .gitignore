@@ -14,3 +14,4 @@ build/bin/*
 Doxyfile
 build/*
 data/*
+build-release/*

@@ -21,7 +21,9 @@
 #include "LabelCrossEntropyOperator.hpp"
 #include "SoftMaxLayerDefinition.hpp"
 #include "FullyConnectedOperator.hpp"
+#include "SOMException.hpp"
 
+#include "ExponentialMovingAverage.hpp"
 #include "NetConstruction.hpp"
 
 const double PI  =3.141592653589793238463;
@@ -123,13 +125,6 @@ bool BlobNamesFound(const std::vector<std::string>& blobNames, const caffe2::Wor
 {
 std::vector<std::string> current_blobs = workspace.Blobs();
 
-std::cout << "Current blobs:" << std::endl;
-
-for(const std::string& blob_name : current_blobs)
-{
-std::cout << blob_name << std::endl;
-}
-
 for(const std::string& blob_name : blobNames)
 {
 if(std::find(current_blobs.begin(), current_blobs.end(), blob_name) == current_blobs.end())
@@ -153,7 +148,7 @@ TEST_CASE("Test netspace sine approximation", "[Example]")
 {
 //Make 10000 training examples
 int64_t numberOfTrainingExamples = 1000;
-int64_t batch_size = 2;
+int64_t batch_size = 1;
 REQUIRE((numberOfTrainingExamples % batch_size) == 0);
 
 std::vector<float> trainingInputs;
@@ -172,10 +167,11 @@ GoodBot::NetSpace netspace(workspace);
 
 //Add operators to create input blobs
 GoodBot::AddConstantFillOp("init_interfaces_input", "input_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 1}, {"INIT"}, false, netspace);
+
 GoodBot::AddConstantFillOp("init_interfaces_expected_output", "expected_output_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 1}, {"INIT"}, false, netspace);
 
 //Create input blobs
-caffe2::NetDef input_init_network = GoodBot::GetNetwork("init_interfaces", "INIT", netspace);
+caffe2::NetDef input_init_network = GoodBot::GetNetwork("init_interfaces", "INIT", false, netspace);
 caffe2::NetBase* init_interfaces_net = workspace.CreateNet(input_init_network);
 init_interfaces_net->Run();
 
@@ -183,70 +179,39 @@ REQUIRE(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace));
 REQUIRE(BlobShapeMatches("input_blob", {1, 1}, workspace));
 REQUIRE(BlobShapeMatches("expected_output_blob", {1, 1}, workspace));
 
-/*
-//Create the blobs to inject the sine input/output for training
-caffe2::TensorCPU& inputBlob = *workspace.CreateBlob("inputBlob")->GetMutable<caffe2::TensorCPU>();
-inputBlob.Resize(batch_size, 1);
-inputBlob.mutable_data<float>();
+caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
+caffe2::TensorCPU& expected_output_blob = GoodBot::GetMutableTensor("expected_output_blob", workspace);
 
-std::string trainingExpectedOutputBlobName = "trainingExpectedOutputBlobName";
-caffe2::TensorCPU& expectedOutputBlob = *workspace.CreateBlob(trainingExpectedOutputBlobName)->GetMutable<caffe2::TensorCPU>();
-expectedOutputBlob.Resize(batch_size, 1);
-expectedOutputBlob.mutable_data<float>();
+//Make main net
+AddFullyConnectedModuleWithActivation("sine_net_1", "input_blob", "sine_net_fc_1", 100, "Relu", "XavierFill", "ConstantFill", netspace);
+AddFullyConnectedModuleWithActivation("sine_net_2", "sine_net_fc_1", "sine_net_fc_2", 100, "Relu", "XavierFill", "ConstantFill", netspace);
+AddFullyConnectedModule("sine_net_3", "sine_net_fc_2", "output_blob", 1, "XavierFill", "ConstantFill", netspace);
 
-//Define a 3 layer fully connected network with default (sigmoidal) activation
-GoodBot::FullyConnectedModuleDefinition network("inputBlob", {100, 100, 1}, "HelloNetwork", 1, "XavierFill", "ConstantFill", "Tanh");
-network.SetMode("TRAIN");
+//Make loss/loopback for gradient
+AddSquaredL2DistanceOp("sine_net_loss_l2_dist", "output_blob", "expected_output_blob", "sine_net_loss_l2_dist", {"TRAIN", "TEST"}, netspace);
+AddAveragedLossOp("sine_net_avg_loss", "sine_net_loss_l2_dist", "sine_net_avg_loss", {"TRAIN", "TEST"}, netspace);
+AddNetworkGradientLoopBack("sine_net_gradient_loop_back", "sine_net_avg_loss", {"TRAIN", "TEST"}, netspace);
 
-//Add a module for computing loss to the end of the network
-GoodBot::AveragedL2LossModuleDefinitionParameters lossParameters;
-lossParameters.inputBlobName = network.GetOutputBlobNames()[0];
-lossParameters.moduleName = "AveragedL2Loss";
-lossParameters.trainingExpectedOutputBlobName = trainingExpectedOutputBlobName;
-lossParameters.testExpectedOutputBlobName = trainingExpectedOutputBlobName;
+//Add gradient ops
+AddGradientOperators("sine_net", {"TRAIN", "TEST"}, netspace);
 
-network.AddModule(*(new  GoodBot::AveragedL2LossModuleDefinition(lossParameters)));
-network.SetMode("TRAIN");
+//Add solver ops
+GoodBot::AddAdamSolvers("sine_net", netspace);
 
-//Add a solver module for training/updating
-GoodBot::AdamSolverParameters solverParams;
-solverParams.moduleName = "AdamSolver";
-solverParams.trainableParameterNames = network.GetTrainableBlobNames();
-solverParams.trainableParameterShapes = network.GetTrainableBlobShapes();
+//Initialize network
+caffe2::NetDef sine_net_init_def = GoodBot::GetNetwork("sine_net", "INIT", false, netspace);
 
-network.AddModule(*(new GoodBot::AdamSolver(solverParams)));
+caffe2::NetBase* sine_net_init_net = workspace.CreateNet(sine_net_init_def);
+sine_net_init_net->Run();
 
-SECTION("Test training network", "[networkArchitecture]")
-{
-//Training the network, so set the mode to train
-network.SetMode("TRAIN");
-
-//Initialize the network by automatically generating the NetDef for network initialization in "TRAIN" mode
-caffe2::NetDef trainingNetworkInitializationDefinition = network.GetInitializationNetwork();
-
-//Create and run the initialization network.
-caffe2::NetBase* initializationNetwork = workspace.CreateNet(trainingNetworkInitializationDefinition);
-initializationNetwork->Run();
-
-//Automatically generate the training network
-caffe2::NetDef trainingNetworkDefinition = network.GetNetwork(workspace.Blobs());
-
-//Instance the training network implementation
-caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
-
-//Create the deploy version of the network
-network.SetMode("DEPLOY");
-
-caffe2::NetDef deployNetworkDefinition = network.GetNetwork(workspace.Blobs());
-caffe2::NetBase* deployNetwork = workspace.CreateNet(deployNetworkDefinition);
-
-//Get the blob for network output/iteration count for later testing
-caffe2::TensorCPU& networkOutput = *workspace.GetBlob(network.GetOutputBlobNames()[0])->GetMutable<caffe2::TensorCPU>();
-
-caffe2::TensorCPU& iter = *workspace.GetBlob("AdamSolver_iteration_iterator")->GetMutable<caffe2::TensorCPU>();
+//Create training network
+caffe2::NetDef sin_net_train_def = GoodBot::GetNetwork("sine_net", "TRAIN", true, netspace);
+caffe2::NetBase* sine_net_train_net = workspace.CreateNet(sin_net_train_def);
 
 //Train the network
 int64_t numberOfTrainingIterations = 100000;
+
+GoodBot::ExponentialMovingAverage moving_average(1.0 / (numberOfTrainingExamples / 2));
 
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {
@@ -256,112 +221,120 @@ if((iteration % trainingInputs.size()) == 0)
 PairedRandomShuffle(trainingInputs, trainingExpectedOutputs);
 }
 
-//Load data into blobs
-memcpy(inputBlob.mutable_data<float>(), &trainingInputs[iteration % trainingInputs.size()], inputBlob.nbytes());
-memcpy(expectedOutputBlob.mutable_data<float>(), &trainingExpectedOutputs[iteration % trainingExpectedOutputs.size()], expectedOutputBlob.nbytes());
+//Load data into network
+memcpy(input_blob.mutable_data<float>(), &trainingInputs[iteration % trainingInputs.size()], input_blob.nbytes());
+memcpy(expected_output_blob.mutable_data<float>(), &trainingExpectedOutputs[iteration % trainingExpectedOutputs.size()], expected_output_blob.nbytes());
 
-//Run network with loaded instance
-trainingNetwork->Run();
+//Run network in training mode
+sine_net_train_net->Run();
+
+caffe2::TensorCPU& loss = GoodBot::GetMutableTensor("sine_net_avg_loss", workspace);
+
+moving_average.Update((double) *loss.mutable_data<float>());
 }
 
+REQUIRE(moving_average.GetAverage() < .01);
+}
 
+//Make sure we can handle a simple categorization network (learn XOR, categorizing into (0,1))
+TEST_CASE("Test simple categorization network with netspace", "[Example]")
 {
-double maximum_deviation = 0.0;
-double average_deviation = 0.0;
-for(int64_t iteration = 0; iteration < trainingInputs.size(); iteration++)
-{
-//Load data into blobs to csv for viewing
-memcpy(inputBlob.mutable_data<float>(), &trainingInputs[iteration], inputBlob.nbytes());
+    //Make training examples
+    int64_t numberOfTrainingExamples = 4;
+    int64_t batch_size = 1;
+    REQUIRE((numberOfTrainingExamples % batch_size) == 0);
+    std::vector<std::array<float, 2>> trainingInputs;
+    std::vector<int32_t> trainingExpectedOutputs;
 
-deployNetwork->Run();
+    int64_t inputs_per_example = 2;
+    int64_t outputs_per_example = 1;
 
-double deviation = fabs((*networkOutput.mutable_data<float>()) - trainingExpectedOutputs[iteration]);
+    for(bool input_1_value : {false, true})
+    {
+    for(bool input_2_value : {false, true})
+    {
+    trainingInputs.emplace_back(std::array<float, 2>{(float) input_1_value, (float) input_2_value});
+    trainingExpectedOutputs.emplace_back((int32_t) (input_1_value != input_2_value));
+    }
+    }
 
-maximum_deviation = std::max( deviation, maximum_deviation);
-average_deviation += deviation/trainingInputs.size();
+    //Shuffle the examples
+    PairedRandomShuffle(trainingInputs, trainingExpectedOutputs);
+
+    //Create the Caffe2 workspace/context
+    caffe2::Workspace workspace;
+    caffe2::CPUContext context;
+
+    GoodBot::NetSpace netspace(workspace);
+
+    //Add operators to create input blobs
+    GoodBot::AddConstantFillOp("init_interfaces_input", "input_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 2}, {"INIT"}, false, netspace);
+    GoodBot::AddConstantFillOp("init_interfaces_expected_output", "expected_output_blob", (int32_t) 0,  caffe2::TensorProto::INT32, {1, 1}, {"INIT"}, false, netspace);
+
+    //Create input blobs
+    caffe2::NetDef input_init_network = GoodBot::GetNetwork("init_interfaces", "INIT", false, netspace);
+    caffe2::NetBase* init_interfaces_net = workspace.CreateNet(input_init_network);
+    init_interfaces_net->Run();
+
+    REQUIRE(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace));
+    REQUIRE(BlobShapeMatches("input_blob", {1, 2}, workspace));
+    REQUIRE(BlobShapeMatches("expected_output_blob", {1, 1}, workspace));
+
+    caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
+    caffe2::TensorCPU& expected_output_blob = GoodBot::GetMutableTensor("expected_output_blob", workspace);
+
+    //Make main net
+    AddFullyConnectedModuleWithActivation("xor_net_1", "input_blob", "xor_net_fc_1", 100, "Relu", "XavierFill", "ConstantFill", netspace);
+    AddFullyConnectedModuleWithActivation("xor_net_2", "xor_net_fc_1", "xor_net_fc_2", 100, "Relu", "XavierFill", "ConstantFill", netspace);
+    AddFullyConnectedModule("xor_net_3", "xor_net_fc_2", "xor_net_fc_3", 2, "XavierFill", "ConstantFill", netspace);
+    AddSoftMaxOp("xor_net_softmax", "xor_net_fc_3", "xor_net_softmax", {}, netspace);
+
+    //Make loss/loopback for gradient
+    AddLabelCrossEntropyOp("xor_net_cross_entropy_loss", "xor_net_softmax", "expected_output_blob", "xor_net_cross_entropy_loss", {"TRAIN", "TEST"}, netspace);
+    AddAveragedLossOp("xor_net_avg_loss", "xor_net_cross_entropy_loss", "xor_net_avg_loss", {"TRAIN", "TEST"}, netspace);
+    AddNetworkGradientLoopBack("xor_net_gradient_loop_back", "xor_net_avg_loss", {"TRAIN", "TEST"}, netspace);
+
+    //Add gradient ops
+    AddGradientOperators("xor_net", {"TRAIN", "TEST"}, netspace);
+
+    //Add solver ops
+    GoodBot::AddAdamSolvers("xor_net", netspace);
+
+
+    //Initialize network
+    caffe2::NetDef xor_net_init_def = GoodBot::GetNetwork("xor_net", "INIT", false, netspace);
+    caffe2::NetBase* xor_net_init_net = workspace.CreateNet(xor_net_init_def);
+    xor_net_init_net->Run();
+
+    //Create training network
+    caffe2::NetDef xor_net_train_def = GoodBot::GetNetwork("xor_net", "TRAIN", true, netspace);
+    caffe2::NetBase* xor_net_train_net = workspace.CreateNet(xor_net_train_def);
+
+    GoodBot::ExponentialMovingAverage moving_average(1.0 / (100));
+
+    int64_t number_of_training_iterations = 1000;
+    for(int64_t iteration = 0; iteration < number_of_training_iterations; iteration++)
+    {
+    //Shuffle data every epoc through
+    if((iteration % trainingInputs.size()) == 0)
+    {
+    PairedRandomShuffle(trainingInputs, trainingExpectedOutputs);
+    }
+
+    //Load data into blobs
+    memcpy(input_blob.mutable_data<float>(), &trainingInputs[iteration % trainingInputs.size()][0], input_blob.nbytes());
+    memcpy(expected_output_blob.mutable_data<int32_t>(), &trainingExpectedOutputs[iteration % trainingExpectedOutputs.size()], expected_output_blob.nbytes());
+
+    //Run network with loaded instance
+    xor_net_train_net->Run();
+
+    //Get loss exponentially weighted moving average
+    caffe2::TensorCPU& loss = GoodBot::GetMutableTensor("xor_net_avg_loss", workspace);
+
+    moving_average.Update((double) *loss.mutable_data<float>());
+    }
+    REQUIRE(moving_average.GetAverage() < .01);
 }
-
-REQUIRE(average_deviation < .1);
-}
-
-}
-}
-
-
-
-SECTION("Test training network", "[networkArchitecture]")
-{
-//Training the network, so set the mode to train
-network.SetMode("TRAIN");
-
-//Initialize the network by automatically generating the NetDef for network initialization in "TRAIN" mode
-caffe2::NetDef trainingNetworkInitializationDefinition = network.GetInitializationNetwork();
-
-//Create and run the initialization network.
-caffe2::NetBase* initializationNetwork = workspace.CreateNet(trainingNetworkInitializationDefinition);
-initializationNetwork->Run();
-
-//Automatically generate the training network
-caffe2::NetDef trainingNetworkDefinition = network.GetNetwork(workspace.Blobs());
-
-//Instance the training network implementation
-caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition);
-
-//Create the deploy version of the network
-network.SetMode("DEPLOY");
-
-caffe2::NetDef deployNetworkDefinition = network.GetNetwork(workspace.Blobs());
-caffe2::NetBase* deployNetwork = workspace.CreateNet(deployNetworkDefinition);
-
-//Get the blob for network output/iteration count for later testing
-caffe2::TensorCPU& networkOutput = *workspace.GetBlob(network.GetOutputBlobNames()[0])->GetMutable<caffe2::TensorCPU>();
-
-caffe2::TensorCPU& iter = *workspace.GetBlob("AdamSolver_iteration_iterator")->GetMutable<caffe2::TensorCPU>();
-
-//Train the network
-int64_t numberOfTrainingIterations = 100000;
-
-for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
-{
-//Shuffle data every epoc through
-if((iteration % trainingInputs.size()) == 0)
-{
-PairedRandomShuffle(trainingInputs, trainingExpectedOutputs);
-}
-
-//Load data into blobs
-memcpy(inputBlob.mutable_data<float>(), &trainingInputs[iteration % trainingInputs.size()], inputBlob.nbytes());
-memcpy(expectedOutputBlob.mutable_data<float>(), &trainingExpectedOutputs[iteration % trainingExpectedOutputs.size()], expectedOutputBlob.nbytes());
-
-//Run network with loaded instance
-trainingNetwork->Run();
-}
-
-
-{
-double maximum_deviation = 0.0;
-double average_deviation = 0.0;
-for(int64_t iteration = 0; iteration < trainingInputs.size(); iteration++)
-{
-//Load data into blobs to csv for viewing
-memcpy(inputBlob.mutable_data<float>(), &trainingInputs[iteration], inputBlob.nbytes());
-
-deployNetwork->Run();
-
-double deviation = fabs((*networkOutput.mutable_data<float>()) - trainingExpectedOutputs[iteration]);
-
-maximum_deviation = std::max( deviation, maximum_deviation);
-average_deviation += deviation/trainingInputs.size();
-}
-
-REQUIRE(average_deviation < .1);
-}
-
-}
-*/
-
-}
-
 
 //Make sure we can handle a simple categorization network (learn XOR, categorizing into (0,1))
 TEST_CASE("Test simple categorization network", "[Example]")
@@ -465,7 +438,7 @@ caffe2::NetDef deployNetworkDefinition = network.GetNetwork(workspace.Blobs());
 caffe2::NetBase* deployNetwork = workspace.CreateNet(deployNetworkDefinition);
 
 //Train the network
-int64_t numberOfTrainingIterations = 20000;
+int64_t numberOfTrainingIterations = 1000;
 
 for(int64_t iteration = 0; iteration < numberOfTrainingIterations; iteration++)
 {

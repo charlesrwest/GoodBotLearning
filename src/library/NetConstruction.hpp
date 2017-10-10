@@ -61,10 +61,24 @@ NetOp op(GoodBot::CreateOpDef(opName, {}, {outputName}, "ConstantFill", {{"shape
 netspace.AddNetOp(op);
 }
 
+void AddSquaredL2DistanceOp(const std::string& opName, const std::string& firstInputName, const std::string& secondInputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
+void AddNetworkGradientLoopBack(const std::string& opName, const std::string& inputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
+void AddAveragedLossOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
+void AddGradientOperators(const NetOp& op, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
+void AddGradientOperators(const std::string& networkName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
+void AddAdamOp(const std::string& opName, const std::string& blobToUpdateName, const std::string& learningRateName, const std::string& iteratorName, const std::string& moment1Name, const std::string& moment2Name, const std::vector<std::string>& activeModes, NetSpace& netspace, float beta1 = .9, float beta2 = .999, float epsilon = 1e-5);
+
+void AddAdamSolvers(const std::string& networkName, NetSpace& netspace, float beta1 = .9, float beta2 = .999, float epsilon = 1e-5, float learningRate = -.001);
+
+void AddIterOp(const std::string& opName, const std::string& inputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddSoftMaxOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddLabelCrossEntropyOp(const std::string& opName, const std::string& inputName, const std::string& expectedInputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
 }
