@@ -361,3 +361,50 @@ void GoodBot::AddLabelCrossEntropyOp(const std::string& opName, const std::strin
 
     netspace.AddNetOp(op);
 }
+
+//Often "UINT8" -> "FLOAT"
+void GoodBot::AddCastOp(const std::string& opName, const std::string& inputName, const std::string& inputTypeString, const std::string& outputName, const std::string& outputTypeString, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "Cast", {{"to", inputTypeString}, {"from_type", outputTypeString}}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddScaleOp(const std::string& opName, const std::string& inputName, const std::string& outputName, float scale, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "Scale", {{"scale", scale}}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddConvOp(const std::string& opName, const std::string& inputName, const std::string& weightsName, const std::string& biasName, const std::string& outputName, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName, weightsName, biasName}, {outputName}, "Conv", {{"stride", stride}, {"pad", paddingSize}, {"kernel", kernelSize}}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddConvModule(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputDepth, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace)
+{
+    std::vector<int64_t> input_shape = GetBlobShape(inputName, netspace);
+    SOM_ASSERT(input_shape.size() > 2, "Unsupported image shape");
+
+    int64_t input_depth = input_shape[1];
+
+    SOM_ASSERT(weightFillType == "XavierFill", "Unsupported fill type");
+    std::string weight_name = opName+"_weight_fill";
+    AddXavierOp(weight_name, weight_name, {outputDepth, input_depth, kernelSize, kernelSize}, {"INIT"}, true, netspace);
+
+    SOM_ASSERT(biasFillType == "ConstantFill", "Unsupported fill type");
+    std::string bias_name = opName+"_bias_fill";
+    AddConstantFillOp(bias_name, bias_name, 0.0f, caffe2::TensorProto::FLOAT, {outputDepth}, {"INIT"}, true, netspace);
+
+    AddConvOp(opName, inputName, weight_name, bias_name, outputName, stride, paddingSize, kernelSize, std::vector<std::string>{}, netspace);
+}
+
+void GoodBot::AddMaxPoolOp(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& imageOrder, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "MaxPool", {{"stride", stride}, {"pad", paddingSize}, {"kernel", kernelSize}, {"order", imageOrder}}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}

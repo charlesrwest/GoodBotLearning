@@ -81,4 +81,14 @@ void AddSoftMaxOp(const std::string& opName, const std::string& inputName, const
 
 void AddLabelCrossEntropyOp(const std::string& opName, const std::string& inputName, const std::string& expectedInputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
+void AddCastOp(const std::string& opName, const std::string& inputName, const std::string& inputTypeString, const std::string& outputName, const std::string& outputTypeString, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddScaleOp(const std::string& opName, const std::string& inputName, const std::string& outputName, float scale, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddConvOp(const std::string& opName, const std::string& inputName, const std::string& weightsName, const std::string& biasName, const std::string& outputName, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddConvModule(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputDepth, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace);
+
+void AddMaxPoolOp(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& imageOrder, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
 }

@@ -282,7 +282,7 @@ TEST_CASE("Simple conv network", "[Example]")
     //conv (3x3, 20 channels)
     //max pool (stride = 2) 10x10 -> 5x5
     //relu fc 500
-    //relu fc 500TEST_CASE("Draw shapes", "[Example]")
+    //relu fc 500
     //fc 2
     //softmax
     //cross entropy
