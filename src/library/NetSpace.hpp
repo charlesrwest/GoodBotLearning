@@ -46,6 +46,10 @@ std::vector<int64_t> GetBlobShape(const std::string& blobName, const NetSpace& n
 
 std::vector<int64_t> GetFCOperatorOutputSize(const NetOp& op, const NetSpace& netSpace);
 
+std::vector<int64_t> GetConvOperatorOutputSize(const NetOp& op, const NetSpace& netSpace);
+
+std::vector<int64_t> GetMaxPoolOperatorOutputSize(const NetOp& op, const NetSpace& netSpace);
+
 std::vector<NetOp> GetActiveNetOps(const std::string& networkName, const std::string& activeMode, bool includeEmptyModeOps, const GoodBot::NetSpace& netspace);
 
 std::vector<NetOp> GetActiveNetOps(const std::string& networkName, const std::vector<std::string>& activeModes, bool includeEmptyModeOps, const GoodBot::NetSpace& netspace);

@@ -91,6 +91,16 @@ public:
         return Depth;
     }
 
+    const ValueType* GetData() const
+    {
+        return &(values[0]);
+    }
+
+    int64_t GetSize() const
+    {
+        return values.size();
+    }
+
 private:
     int64_t ToFlatIndex(int64_t widthIndex, int64_t heightIndex, int64_t depthIndex) const
     {
@@ -259,6 +269,28 @@ void VisualizeTrainingData(const std::vector<int32_t>& labels, const std::vector
     }
 }
 
+bool BlobNamesFound(const std::vector<std::string>& blobNames, const caffe2::Workspace& workspace)
+{
+std::vector<std::string> current_blobs = workspace.Blobs();
+
+for(const std::string& blob_name : blobNames)
+{
+if(std::find(current_blobs.begin(), current_blobs.end(), blob_name) == current_blobs.end())
+{
+return false;
+}
+}
+
+return true;
+}
+
+bool BlobShapeMatches(const std::string& blobName, const std::vector<int64_t>& expectedShape, const caffe2::Workspace& workspace)
+{
+caffe2::TensorCPU tensor = GoodBot::GetTensor(*workspace.GetBlob(blobName));
+
+return expectedShape == tensor.dims();
+}
+
 TEST_CASE("Draw shapes", "[Example]")
 {
     std::vector<int32_t> labels;
@@ -274,20 +306,120 @@ TEST_CASE("Draw shapes", "[Example]")
 
 TEST_CASE("Simple conv network", "[Example]")
 {
-    //Create inputs/outputs
-    //cast
-    //scale
+    //Create the Caffe2 workspace/context
+    caffe2::Workspace workspace;
+    caffe2::CPUContext context;
+
+    GoodBot::NetSpace netspace(workspace);
+
+    /** Create inputs/outputs */
+
+    //Batch size, channel depth, width/height
+    GoodBot::AddConstantFillOp("init_interfaces_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, 1, 20, 20}, {"INIT"}, false, netspace);
+
+    //Batch size, expected category
+    GoodBot::AddConstantFillOp("init_interfaces_expected_output", "expected_output_blob", 0,  caffe2::TensorProto::INT32, {1, 1}, {"INIT"}, false, netspace);
+
+    //Create input blobs
+    caffe2::NetDef input_init_network = GoodBot::GetNetwork("init_interfaces", "INIT", false, netspace);
+    caffe2::NetBase* init_interfaces_net = workspace.CreateNet(input_init_network);
+    init_interfaces_net->Run();
+
+    REQUIRE(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace));
+    REQUIRE(BlobShapeMatches("input_blob", {1, 1, 20, 20}, workspace));
+    REQUIRE(BlobShapeMatches("expected_output_blob", {1, 1}, workspace));
+
+    caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
+    caffe2::TensorCPU& expected_output_blob = GoodBot::GetMutableTensor("expected_output_blob", workspace);
+
+    //Produce the training data
+    std::vector<int32_t> labels;
+    std::vector<PseudoImage<char>> images;
+
+    std::tie(labels, images) = CreateShapeImageTrainingData<char>(0, 100, 1, {0});
+
+    PairedRandomShuffle(images, labels);
+
+    //Make the training network
+    GoodBot::AddCastOp("shape_class_cast", "input_blob", "INT8", "input_blob_casted", "FLOAT", {}, netspace);
+    AddScaleOp("shape_class_scale", "input_blob_casted", "input_blob_scaled", (1.0/128.0), {}, netspace);
+
+    //conv (3x3, 20 channels)
     //conv (3x3, 20 channels)
     //max pool (stride = 2) 20x20 -> 10x10
+    //Relu
+    AddConvModule("shape_class_conv_1", "input_blob_scaled", "shape_class_conv_1", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+    AddConvModule("shape_class_conv_2", "shape_class_conv_1", "shape_class_conv_2", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+    AddMaxPoolOp("shape_class_max_pool_1", "shape_class_conv_2", "shape_class_max_pool_1", 2, 0, 2, "NCHW", {}, netspace);
+    AddReluOp("shape_class_max_pool_relu_1", "shape_class_max_pool_1", "shape_class_max_pool_1", {}, netspace);
+
+    //conv (3x3, 20 channels)
     //conv (3x3, 20 channels)
     //max pool (stride = 2) 10x10 -> 5x5
+    //Relu
+    AddConvModule("shape_class_conv_3", "shape_class_max_pool_1", "shape_class_conv_3", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+    AddConvModule("shape_class_conv_4", "shape_class_conv_3", "shape_class_conv_4", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+    AddMaxPoolOp("shape_class_max_pool_2", "shape_class_conv_4", "shape_class_max_pool_2", 2, 0, 2, "NCHW", {}, netspace);
+    AddReluOp("shape_class_max_pool_relu_2", "shape_class_max_pool_2", "shape_class_max_pool_2", {}, netspace);
+
     //relu fc 500
     //relu fc 500
     //fc 2
     //softmax
-    //cross entropy
-    //avg
+    AddFullyConnectedModuleWithActivation("shape_class_fc_1", "shape_class_max_pool_2", "shape_class_fc_1", 512, "Relu", "XavierFill", "ConstantFill", netspace);
+    AddFullyConnectedModuleWithActivation("shape_class_fc_2", "shape_class_fc_1", "shape_class_fc_2", 512, "Relu", "XavierFill", "ConstantFill", netspace);
+    AddFullyConnectedModule("shape_class_fc_3", "shape_class_fc_2", "shape_class_fc_3", 2, "XavierFill", "ConstantFill", netspace);
+    AddSoftMaxOp("shape_class_softmax", "shape_class_fc_3", "shape_class_softmax", {}, netspace);
 
+    //Make loss/loopback for gradient
+    AddLabelCrossEntropyOp("shape_class_cross_entropy_loss", "shape_class_softmax", "expected_output_blob", "shape_class_cross_entropy_loss", {"TRAIN", "TEST"}, netspace);
+    AddAveragedLossOp("shape_class_avg_loss", "shape_class_cross_entropy_loss", "shape_class_avg_loss", {"TRAIN", "TEST"}, netspace);
+    AddNetworkGradientLoopBack("shape_class_gradient_loop_back", "shape_class_avg_loss", {"TRAIN", "TEST"}, netspace);
+
+    //Add gradient ops
+    AddGradientOperators("shape_class", {"TRAIN", "TEST"}, netspace);
+
+    //Add solver ops
+    GoodBot::AddAdamSolvers("shape_class", netspace);
+
+    //Initialize network
+    caffe2::NetDef shape_class_init_def = GoodBot::GetNetwork("shape_class", "INIT", false, netspace);
+    caffe2::NetBase* shape_class_init_net = workspace.CreateNet(shape_class_init_def);
+    shape_class_init_net->Run();
+
+    //Create training network
+    caffe2::NetDef shape_class_train_def = GoodBot::GetNetwork("shape_class", "TRAIN", true, netspace);
+    caffe2::NetBase* shape_class_train_net = workspace.CreateNet(shape_class_train_def);
+
+    GoodBot::ExponentialMovingAverage moving_average(1.0 / (1000));
+
+    int64_t number_of_training_iterations = 1000000;
+    for(int64_t iteration = 0; iteration < number_of_training_iterations; iteration++)
+    {
+    //Shuffle data every epoc through
+    if((iteration % labels.size()) == 0)
+    {
+    PairedRandomShuffle(images, labels);
+    }
+
+    //Load data into blobs
+    SOM_ASSERT(images[iteration % images.size()].GetSize() == input_blob.nbytes(), "Image size differs from input_blob size (" + std::to_string(images[iteration % images.size()].GetSize()) + " vs " + std::to_string(input_blob.nbytes())) + ")";
+    memcpy(input_blob.mutable_data<int8_t>(), images[iteration % images.size()].GetData(), input_blob.nbytes());
+
+    SOM_ASSERT(sizeof(labels[iteration % labels.size()]) == expected_output_blob.nbytes(), "Label size mismatch");
+    memcpy(expected_output_blob.mutable_data<int32_t>(), &labels[iteration % labels.size()], expected_output_blob.nbytes());
+
+    //Run network with loaded instance
+    shape_class_train_net->Run();
+
+    //Get loss exponentially weighted moving average
+    caffe2::TensorCPU& loss = GoodBot::GetMutableTensor("shape_class_avg_loss", workspace);
+
+    moving_average.Update((double) *loss.mutable_data<float>());
+
+    std::cout << "Moving average loss: " << moving_average.GetAverage() << std::endl;
+    }
+    REQUIRE(moving_average.GetAverage() < .01);
 }
 
 TEST_CASE("Try netop syntax", "[Example]")
@@ -358,27 +490,7 @@ trainingExpectedOutputs.emplace_back(sin(((double) trainingExampleIndex)/(number
 return results;
 }
 
-bool BlobNamesFound(const std::vector<std::string>& blobNames, const caffe2::Workspace& workspace)
-{
-std::vector<std::string> current_blobs = workspace.Blobs();
 
-for(const std::string& blob_name : blobNames)
-{
-if(std::find(current_blobs.begin(), current_blobs.end(), blob_name) == current_blobs.end())
-{
-return false;
-}
-}
-
-return true;
-}
-
-bool BlobShapeMatches(const std::string& blobName, const std::vector<int64_t>& expectedShape, const caffe2::Workspace& workspace)
-{
-caffe2::TensorCPU tensor = GoodBot::GetTensor(*workspace.GetBlob(blobName));
-
-return expectedShape == tensor.dims();
-}
 
 //Make sure we can at least train a simple fully connected network
 TEST_CASE("Test netspace sine approximation", "[Example]")

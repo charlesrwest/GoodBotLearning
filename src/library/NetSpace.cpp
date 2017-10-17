@@ -65,12 +65,9 @@ if(GoodBot::GetArgument("shape", creatorOp.GetOperatorDef()) != nullptr)
 
 const std::string& type = creatorOp.GetOperatorDef().type();
 
-if(type == "FC")
-{
-    return true;
-}
+const static std::vector<std::string> allowed_types{"FC", "Scale", "Cast", "Conv", "MaxPool"}; //Could sort and make binary search at some point
 
-return false;
+return std::find(allowed_types.begin(), allowed_types.end(), type) != allowed_types.end();
 }
 
 std::vector<int64_t> GetBlobShapeFromCreator(const std::string& blobName, const GoodBot::NetOp& creatorOp, const NetSpace& netSpace)
@@ -96,10 +93,30 @@ if(IsType("FC", creatorOp))
 {
 return GetFCOperatorOutputSize(creatorOp, netSpace);
 }
+else if(IsType("Scale", creatorOp))
+{
+return GetBlobShape(GetInputName(creatorOp, 0), netSpace);
+}
+else if(IsType("Cast", creatorOp))
+{
+return GetBlobShape(GetInputName(creatorOp, 0), netSpace);
+}
+else if(IsType("Conv", creatorOp))
+{
+return GetConvOperatorOutputSize(creatorOp, netSpace);
+}
+else if(IsType("MaxPool", creatorOp))
+{
+return GetMaxPoolOperatorOutputSize(creatorOp, netSpace);
+}
+else
+{
+    SOM_ASSERT(false, "Blob shape determination from " + creatorOp.GetOperatorDef().type() + " has not been implemented yet but our check function thought it had been");
+}
+}
 else
 {
     SOM_ASSERT(false, "Blob shape determination from " + creatorOp.GetOperatorDef().type() + " has not been implemented yet");
-}
 }
 
 return result;
@@ -226,4 +243,54 @@ std::vector<int64_t> GoodBot::GetFCOperatorOutputSize(const NetOp& op, const Net
     std::string bias_blob_name = GetInputName(op, 2);
 
     return {GetBlobShape(input_name, netSpace)[0], GetBlobShape(bias_blob_name, netSpace)[0]};
+}
+
+std::vector<int64_t> GoodBot::GetConvOperatorOutputSize(const NetOp& op, const NetSpace& netSpace)
+{
+    std::string input_name = GetInputName(op, 0);
+    std::vector<int64_t> input_shape = GetBlobShape(input_name, netSpace);
+    SOM_ASSERT(input_shape.size() == 4, "Unsupported input dimensionality");
+
+    std::string bias_name = GetInputName(op, 2);
+    std::vector<int64_t> bias_shape = GetBlobShape(bias_name, netSpace);
+    SOM_ASSERT(bias_shape.size() == 1, "Unsupported bias dimensionality");
+    int64_t output_depth = bias_shape[0];
+
+    const caffe2::Argument* stride_arg = GetArgument("stride", op.GetOperatorDef());
+    SOM_ASSERT(stride_arg != nullptr, "Should not have conv without stride");
+    SOM_ASSERT(stride_arg->has_i(), "Stride should be a scalar integer");
+    int64_t stride = stride_arg->i();
+
+    const caffe2::Argument* pad_arg = GetArgument("pad", op.GetOperatorDef());
+    SOM_ASSERT(pad_arg != nullptr, "Should not have conv without pad");
+    SOM_ASSERT(pad_arg->has_i(), "Pad should be a scalar integer");
+    int64_t pad = pad_arg->i();
+
+    //Batch size, depth, height width
+    return {input_shape[0], output_depth, (input_shape[2]/stride)+2*pad, (input_shape[3]/stride)+2*pad};
+}
+
+std::vector<int64_t> GoodBot::GetMaxPoolOperatorOutputSize(const NetOp& op, const NetSpace& netSpace)
+{
+    std::string input_name = GetInputName(op, 0);
+    std::vector<int64_t> input_shape = GetBlobShape(input_name, netSpace);
+    SOM_ASSERT(input_shape.size() == 4, "Unsupported input dimensionality");
+
+    const caffe2::Argument* stride_arg = GetArgument("stride", op.GetOperatorDef());
+    SOM_ASSERT(stride_arg != nullptr, "Should not have maxpool without stride");
+    SOM_ASSERT(stride_arg->has_i(), "Stride should be a scalar integer");
+    int64_t stride = stride_arg->i();
+
+    const caffe2::Argument* pad_arg = GetArgument("pad", op.GetOperatorDef());
+    SOM_ASSERT(pad_arg != nullptr, "Should not have maxpool without pad");
+    SOM_ASSERT(pad_arg->has_i(), "Pad should be a scalar integer");
+    int64_t pad = pad_arg->i();
+
+    const caffe2::Argument* order_arg = GetArgument("order", op.GetOperatorDef());
+    SOM_ASSERT(order_arg != nullptr, "Should not have maxpool without order");
+    SOM_ASSERT(order_arg->has_s(), "Order should be a single string");
+    SOM_ASSERT(order_arg->s() == "NCHW", "We are only currently supporting NCHW ordering");
+
+    //Batch size, depth, height width
+    return {input_shape[0], input_shape[1], (input_shape[2]/stride)+2*pad, (input_shape[3]/stride)+2*pad};
 }

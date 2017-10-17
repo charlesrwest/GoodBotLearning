@@ -89,6 +89,8 @@ void AddConvOp(const std::string& opName, const std::string& inputName, const st
 
 void AddConvModule(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputDepth, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace);
 
+void AddConvModuleWithActivation(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputDepth, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& activationType, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace);
+
 void AddMaxPoolOp(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& imageOrder, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
 }
