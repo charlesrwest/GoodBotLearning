@@ -391,9 +391,9 @@ TEST_CASE("Simple conv network", "[Example]")
     caffe2::NetDef shape_class_train_def = GoodBot::GetNetwork("shape_class", "TRAIN", true, netspace);
     caffe2::NetBase* shape_class_train_net = workspace.CreateNet(shape_class_train_def);
 
-    GoodBot::ExponentialMovingAverage moving_average(1.0 / (1000));
+    GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
 
-    int64_t number_of_training_iterations = 1000000;
+    int64_t number_of_training_iterations = 300;
     for(int64_t iteration = 0; iteration < number_of_training_iterations; iteration++)
     {
     //Shuffle data every epoc through
@@ -417,7 +417,7 @@ TEST_CASE("Simple conv network", "[Example]")
 
     moving_average.Update((double) *loss.mutable_data<float>());
 
-    std::cout << "Moving average loss: " << moving_average.GetAverage() << std::endl;
+    //std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << std::endl;
     }
     REQUIRE(moving_average.GetAverage() < .01);
 }

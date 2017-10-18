@@ -41,6 +41,9 @@ caffe2::OperatorDef CreateOpDef(const std::string& name, const std::vector<std::
 template<class DType>
 void AddConstantFillOp(const std::string& opName, const std::string& outputName, DType value, caffe2::TensorProto::DataType type, const std::vector<int64_t>& blobDimensions, const std::vector<std::string>& activeModes, bool isTrainable, NetSpace& netspace);
 
+template<class DType>
+void AddConstantFillOp(const std::string& opName, const std::string& outputName, DType value, caffe2::TensorProto::DataType type, const std::vector<int64_t>& blobDimensions, const std::vector<std::string>& activeModes, bool isTrainable, int32_t deviceType, NetSpace& netspace);
+
 void AddXavierOp(const std::string& opName, const std::string& outputName, const std::vector<int64_t>& blobDimensions, const std::vector<std::string>& activeModes, bool isTrainable, NetSpace& netspace);
 
 void AddFullyConnectedOp(const std::string& opName, const std::string& inputName, const std::string& weightsName, const std::string& biasName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
@@ -56,7 +59,15 @@ void AddFullyConnectedModuleWithActivation(const std::string& opName, const std:
 template<class DType>
 void AddConstantFillOp(const std::string& opName, const std::string& outputName, DType value,  caffe2::TensorProto::DataType type, const std::vector<int64_t>& blobDimensions, const std::vector<std::string>& activeModes, bool isTrainable, NetSpace& netspace)
 {
-NetOp op(GoodBot::CreateOpDef(opName, {}, {outputName}, "ConstantFill", {{"shape", blobDimensions}, {"value", value}, {"dtype", type}}), activeModes, isTrainable);
+    AddConstantFillOp(opName, outputName, value, type, blobDimensions, activeModes, isTrainable, caffe2::CPU, netspace); //CPU device type
+}
+
+template<class DType>
+void AddConstantFillOp(const std::string& opName, const std::string& outputName, DType value,  caffe2::TensorProto::DataType type, const std::vector<int64_t>& blobDimensions, const std::vector<std::string>& activeModes, bool isTrainable, int32_t deviceType, NetSpace& netspace)
+{
+caffe2::OperatorDef op_def = GoodBot::CreateOpDef(opName, {}, {outputName}, "ConstantFill", {{"shape", blobDimensions}, {"value", value}, {"dtype", type}});
+op_def.mutable_device_option()->set_device_type(deviceType);
+NetOp op(op_def, activeModes, isTrainable);
 
 netspace.AddNetOp(op);
 }

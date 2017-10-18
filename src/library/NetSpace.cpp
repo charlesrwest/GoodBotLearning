@@ -220,21 +220,27 @@ return results;
 
 caffe2::NetDef GoodBot::GetNetwork(const std::string& rootNetworkName, const std::string& activeMode, bool includeEmptyModeOps, const NetSpace& netspace)
 {
-std::vector<NetOp> active_netops = GetActiveNetOps(rootNetworkName, activeMode, includeEmptyModeOps, netspace);
-
-std::vector<caffe2::OperatorDef> operator_definitions = ConvertToOperatorDef(active_netops);
-
-operator_definitions = ReorderOperatorsToResolveDependencies(operator_definitions, netspace.GetWorkspace().Blobs());
-
-caffe2::NetDef network;
-network.set_name(rootNetworkName + "_" + activeMode);
-
-for(const caffe2::OperatorDef& operator_definition : operator_definitions)
-{
-*network.add_op() = operator_definition; //Add to network
+return GetNetwork(rootNetworkName, activeMode, includeEmptyModeOps, caffe2::CPU, netspace); //Device type CPU
 }
 
-return network;
+caffe2::NetDef GoodBot::GetNetwork(const std::string& rootNetworkName, const std::string& activeMode, bool includeEmptyModeOps, int32_t deviceType, const NetSpace& netspace)
+{
+    std::vector<NetOp> active_netops = GetActiveNetOps(rootNetworkName, activeMode, includeEmptyModeOps, netspace);
+
+    std::vector<caffe2::OperatorDef> operator_definitions = ConvertToOperatorDef(active_netops);
+
+    operator_definitions = ReorderOperatorsToResolveDependencies(operator_definitions, netspace.GetWorkspace().Blobs());
+
+    caffe2::NetDef network;
+    network.set_name(rootNetworkName + "_" + activeMode);
+
+    for(const caffe2::OperatorDef& operator_definition : operator_definitions)
+    {
+    *network.add_op() = operator_definition; //Add to network
+    }
+    network.mutable_device_option()->set_device_type(deviceType);
+
+    return network;
 }
 
 std::vector<int64_t> GoodBot::GetFCOperatorOutputSize(const NetOp& op, const NetSpace& netSpace)
@@ -261,13 +267,19 @@ std::vector<int64_t> GoodBot::GetConvOperatorOutputSize(const NetOp& op, const N
     SOM_ASSERT(stride_arg->has_i(), "Stride should be a scalar integer");
     int64_t stride = stride_arg->i();
 
+    const caffe2::Argument* kernel_arg = GetArgument("kernel", op.GetOperatorDef());
+    SOM_ASSERT(kernel_arg != nullptr, "Should not have conv without kernel");
+    SOM_ASSERT(kernel_arg->has_i(), "kernel should be a scalar integer");
+    int64_t kernel = kernel_arg->i();
+
     const caffe2::Argument* pad_arg = GetArgument("pad", op.GetOperatorDef());
     SOM_ASSERT(pad_arg != nullptr, "Should not have conv without pad");
     SOM_ASSERT(pad_arg->has_i(), "Pad should be a scalar integer");
     int64_t pad = pad_arg->i();
 
     //Batch size, depth, height width
-    return {input_shape[0], output_depth, (input_shape[2]/stride)+2*pad, (input_shape[3]/stride)+2*pad};
+    int64_t kernel_loss = kernel == 2 ? 0 : ((kernel/2)*2);
+    return {input_shape[0], output_depth, (input_shape[2]/stride)+2*pad-kernel_loss, (input_shape[3]/stride)+2*pad-kernel_loss};
 }
 
 std::vector<int64_t> GoodBot::GetMaxPoolOperatorOutputSize(const NetOp& op, const NetSpace& netSpace)
@@ -281,6 +293,11 @@ std::vector<int64_t> GoodBot::GetMaxPoolOperatorOutputSize(const NetOp& op, cons
     SOM_ASSERT(stride_arg->has_i(), "Stride should be a scalar integer");
     int64_t stride = stride_arg->i();
 
+    const caffe2::Argument* kernel_arg = GetArgument("kernel", op.GetOperatorDef());
+    SOM_ASSERT(kernel_arg != nullptr, "Should not have maxpool without kernel");
+    SOM_ASSERT(kernel_arg->has_i(), "kernel should be a scalar integer");
+    int64_t kernel = kernel_arg->i();
+
     const caffe2::Argument* pad_arg = GetArgument("pad", op.GetOperatorDef());
     SOM_ASSERT(pad_arg != nullptr, "Should not have maxpool without pad");
     SOM_ASSERT(pad_arg->has_i(), "Pad should be a scalar integer");
@@ -292,5 +309,6 @@ std::vector<int64_t> GoodBot::GetMaxPoolOperatorOutputSize(const NetOp& op, cons
     SOM_ASSERT(order_arg->s() == "NCHW", "We are only currently supporting NCHW ordering");
 
     //Batch size, depth, height width
-    return {input_shape[0], input_shape[1], (input_shape[2]/stride)+2*pad, (input_shape[3]/stride)+2*pad};
+    int64_t kernel_loss = kernel == 2 ? 0 : ((kernel/2)*2);
+    return {input_shape[0], input_shape[1], (input_shape[2]/stride)+2*pad-kernel_loss, (input_shape[3]/stride)+2*pad-kernel_loss};
 }

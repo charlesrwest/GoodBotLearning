@@ -183,7 +183,6 @@ void GoodBot::AddFullyConnectedOp(const std::string& opName, const std::string& 
 NetOp op(GoodBot::CreateOpDef(opName, {inputName, weightsName, biasName}, {outputName}, "FC", {}), activeModes, false);
 
 netspace.AddNetOp(op);
-
 }
 
 void GoodBot::AddReluOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
@@ -322,7 +321,7 @@ void GoodBot::AddAdamSolvers(const std::string& networkName, NetSpace& netspace,
 
     //Make iterator blob/operator
     std::string iter_blob_name = networkName+"_adam_iteration_count";
-    AddConstantFillOp(iter_blob_name, iter_blob_name, (int64_t) 0, caffe2::TensorProto::INT64, {1}, {"INIT"}, false, netspace );
+    AddConstantFillOp(iter_blob_name, iter_blob_name, (int64_t) 0, caffe2::TensorProto::INT64, {1}, {"INIT"}, false, caffe2::CPU, netspace ); //Force iter blob CPU
     AddIterOp(networkName+"_adam_iter", networkName+"_adam_iter", {"TRAIN"}, netspace);
 
     //Make learning rate blob

@@ -29,9 +29,11 @@ Create a caffe2 definition of a netop network from a root name.
 @param rootNetworkName: The root name of all networks in this network.
 @param activeMode: The mode that is active (determines which ops are pulled in)
 @param includeEmptyModeOps: Whether or not to include ops which have no active modes listed
+@param deviceOption: Which device to put the network on
 @param netspace: The netspace to pull operators from
 */
-caffe2::NetDef GetNetwork(const std::string& rootNetworkName, const std::string& activeMode, bool includeEmptyModeOps, const NetSpace& netspace);
+caffe2::NetDef GetNetwork(const std::string& rootNetworkName, const std::string& activeMode, bool includeEmptyModeOps, const NetSpace& netspace); //Defaults to CPU
+caffe2::NetDef GetNetwork(const std::string& rootNetworkName, const std::string& activeMode, bool includeEmptyModeOps, int32_t deviceType, const NetSpace& netspace);
 
 //Returns null if the blob is not found
 const NetOp* GetCreatorOfBlob(const std::string& blobName, const NetSpace& netspace);
