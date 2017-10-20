@@ -301,11 +301,15 @@ TEST_CASE("Draw shapes", "[Example]")
     REQUIRE(labels.size() > 0);
     REQUIRE(labels.size() == images.size());
 
-    VisualizeTrainingData<char>(labels, images, 0);
+    //VisualizeTrainingData<char>(labels, images, 0);
 }
 
 TEST_CASE("Simple conv network", "[Example]")
 {
+    //Loop through different input depths
+    for(int64_t input_depth : {1, 2, 3})
+    {
+
     //Create the Caffe2 workspace/context
     caffe2::Workspace workspace;
     caffe2::CPUContext context;
@@ -315,7 +319,7 @@ TEST_CASE("Simple conv network", "[Example]")
     /** Create inputs/outputs */
 
     //Batch size, channel depth, width/height
-    GoodBot::AddConstantFillOp("init_interfaces_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, 1, 20, 20}, {"INIT"}, false, netspace);
+    GoodBot::AddConstantFillOp("init_interfaces_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, input_depth, 20, 20}, {"INIT"}, false, netspace);
 
     //Batch size, expected category
     GoodBot::AddConstantFillOp("init_interfaces_expected_output", "expected_output_blob", 0,  caffe2::TensorProto::INT32, {1, 1}, {"INIT"}, false, netspace);
@@ -326,7 +330,7 @@ TEST_CASE("Simple conv network", "[Example]")
     init_interfaces_net->Run();
 
     REQUIRE(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace));
-    REQUIRE(BlobShapeMatches("input_blob", {1, 1, 20, 20}, workspace));
+    REQUIRE(BlobShapeMatches("input_blob", {1, input_depth, 20, 20}, workspace));
     REQUIRE(BlobShapeMatches("expected_output_blob", {1, 1}, workspace));
 
     caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
@@ -336,7 +340,18 @@ TEST_CASE("Simple conv network", "[Example]")
     std::vector<int32_t> labels;
     std::vector<PseudoImage<char>> images;
 
-    std::tie(labels, images) = CreateShapeImageTrainingData<char>(0, 100, 1, {0});
+    //If we have a depth of more than one, make a copy of the training data with exactly one of the depth layers drawn on for each possible depth.
+    for(int64_t fill_depth_index = 0; fill_depth_index < input_depth; fill_depth_index++)
+    {
+        std::vector<int32_t> labels_buffer;
+        std::vector<PseudoImage<char>> images_buffer;
+
+        std::tie(labels_buffer, images_buffer) = CreateShapeImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
+
+        labels.insert(labels.end(), labels_buffer.begin(), labels_buffer.end());
+        images.insert(images.end(), images_buffer.begin(), images_buffer.end());
+    }
+
 
     PairedRandomShuffle(images, labels);
 
@@ -420,6 +435,7 @@ TEST_CASE("Simple conv network", "[Example]")
     //std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << std::endl;
     }
     REQUIRE(moving_average.GetAverage() < .01);
+    }
 }
 
 TEST_CASE("Try netop syntax", "[Example]")
