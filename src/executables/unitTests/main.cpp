@@ -22,273 +22,34 @@
 #include "SoftMaxLayerDefinition.hpp"
 #include "FullyConnectedOperator.hpp"
 #include "SOMException.hpp"
+#include<nlopt.hpp>
 
 #include "ExponentialMovingAverage.hpp"
 #include "NetConstruction.hpp"
+#include "TestHelpers.hpp"
 
-const double PI  =3.141592653589793238463;
-const float  PI_F=3.14159265358979f;
 
-template<class DataType1, class DataType2>
-void PairedRandomShuffle(typename std::vector<DataType1>& inputData, typename  std::vector<DataType2>& expectedOutputData)
+TEST_CASE("Test non-linear optimization with/without gradient", "[Example]")
 {
-assert(inputData.size() == expectedOutputData.size());
-
-//Fisher-Yates shuffle
-for(typename std::vector<DataType1>::size_type index = 0; index < inputData.size(); index++)
-{
-typename std::vector<DataType1>::size_type elementToSwapWithIndex = index + (rand() % (inputData.size() - index));
-std::swap(inputData[index], inputData[elementToSwapWithIndex]);
-std::swap(expectedOutputData[index], expectedOutputData[elementToSwapWithIndex]);
-}
-};
-
-//Add function to allow printing of network architectures
-std::function<void(const google::protobuf::Message&)> print = [&](const google::protobuf::Message& inputMessage)
-{
-std::string buffer;
-
-google::protobuf::TextFormat::PrintToString(inputMessage, &buffer);
-
-std::cout << buffer<<std::endl;
-};
-
-static const uint8_t BLUE_OFFSET = 0;
-static const uint8_t GREEN_OFFSET = 1;
-static const uint8_t RED_OFFSET = 2;
-
-template<typename ValueType>
-class PseudoImage
-{
-public:
-
-    PseudoImage(int64_t width, int64_t height, int64_t depth) : values(height*width*depth), Height(height), Width(width), Depth(depth)
+    for(auto optimization_mode : {nlopt::LD_MMA, nlopt::LN_COBYLA})
     {
+        nlopt::opt optimizer(optimization_mode, 2);
+        std::vector<double> lower_bounds{-HUGE_VAL, 0.0};
+        optimizer.set_lower_bounds(lower_bounds);
+        optimizer.set_min_objective(SimpleTestObjectiveFunction, nullptr);
+        std::array<SimpleTestConstraintData, 2> constraint_data = {SimpleTestConstraintData{2, 0}, SimpleTestConstraintData{-1, 1}};
+        optimizer.add_inequality_constraint(SimpleTestVConstraint, &constraint_data[0], 1e-8);
+        optimizer.add_inequality_constraint(SimpleTestVConstraint, &constraint_data[1], 1e-8);
+        optimizer.set_xtol_rel(1e-4);
+        std::vector<double> input{1.234, 5.678};
+        double min_output = std::numeric_limits<double>::max();
+        nlopt::result result = optimizer.optimize(input, min_output);
+
+        REQUIRE(fabs(.333333 - input[0]) < .001);
+        REQUIRE(fabs(0.296296 - input[1]) < .001);
+        REQUIRE(fabs(0.544331 - min_output) < .001);
+        std::cout << "Optimizer final values: Input (" << input[0] << ", " << input[1] << ") Output " << min_output << std::endl;
     }
-
-    ValueType GetValue(int64_t widthIndex, int64_t heightIndex, int64_t depthIndex) const
-    {
-        return values[ToFlatIndex(widthIndex, heightIndex, depthIndex)];
-    }
-
-    ValueType SetValue(ValueType value, int64_t widthIndex, int64_t heightIndex, int64_t depthIndex)
-    {
-        values[ToFlatIndex(widthIndex, heightIndex, depthIndex)] = value;
-    }
-
-    int64_t GetWidth() const
-    {
-        return Width;
-    }
-
-    int64_t GetHeight() const
-    {
-        return Height;
-    }
-
-    int64_t GetDepth() const
-    {
-        return Depth;
-    }
-
-    const ValueType* GetData() const
-    {
-        return &(values[0]);
-    }
-
-    int64_t GetSize() const
-    {
-        return values.size();
-    }
-
-private:
-    int64_t ToFlatIndex(int64_t widthIndex, int64_t heightIndex, int64_t depthIndex) const
-    {
-        int64_t flat_index = (depthIndex * GetHeight() + heightIndex) * GetWidth() + widthIndex;
-        if(!((flat_index >= 0) && (flat_index < values.size())))
-        {
-            int64_t i = 5;
-        }
-
-        return flat_index;
-    }
-
-    int64_t Height;
-    int64_t Width;
-    int64_t Depth;
-
-    std::vector<ValueType> values;
-};
-
-template<typename ValueType>
-void Fill(ValueType value, PseudoImage<ValueType>& image)
-{
-    for(int64_t x = 0; x < image.GetWidth(); x++)
-    {
-        for(int64_t y = 0; y < image.GetHeight(); y++)
-        {
-            for(int64_t depth = 0; depth < image.GetDepth(); depth++)
-            {
-                image.SetValue(value, x, y, depth);
-            }
-         }
-    }
-}
-
-template<typename ValueType>
-void DrawCircle(int64_t circleX, int64_t circleY, double innerRadius, double outerRadius, ValueType fillValue, std::vector<int64_t> depths, PseudoImage<ValueType>& image)
-{
-    SOM_ASSERT(innerRadius >= 0, "Inner radius must be non-negative");
-    SOM_ASSERT(outerRadius >= 0, "Outer radius must be non-negative");
-    SOM_ASSERT(innerRadius < outerRadius, "Inner radius must be less than outer radius");
-
-    //Inefficient but easy fill method -> scan every pixel and decide based on distance
-    for(int64_t x = 0; x < image.GetWidth(); x++)
-    {
-        for(int64_t y = 0; y < image.GetHeight(); y++)
-        {
-            ValueType x_distance = x - circleX;
-            ValueType y_distance = y - circleY;
-            ValueType distance = sqrt(x_distance*x_distance + y_distance*y_distance);
-
-            if((distance <= outerRadius) && (distance >= innerRadius))
-            {
-                for(int64_t depth : depths)
-                {
-                    image.SetValue(fillValue, x, y, depth);
-                }
-            }
-        }
-    }
-}
-
-template<typename ValueType>
-void DrawSquare(int64_t centerX, int64_t centerY, int64_t innerDimension, int64_t outerDimension, ValueType fillValue, std::vector<int64_t> depths, PseudoImage<ValueType>& image)
-{
-    SOM_ASSERT(innerDimension >= 0, "Inner dimension must be non-negative");
-    SOM_ASSERT(outerDimension >= 0, "Outer dimension must be non-negative");
-    SOM_ASSERT(innerDimension < outerDimension, "Inner dimension must be less than outer dimension");
-
-    int64_t x_outer_min = std::max<int64_t>((int64_t) (centerX-((outerDimension+.5)/2)), 0);
-    int64_t y_outer_min = std::max<int64_t>((int64_t) (centerY-((outerDimension+.5)/2)), 0);
-    int64_t x_outer_max = std::min<int64_t>((int64_t) (centerX+((outerDimension+.5)/2)), std::max<int64_t>(image.GetWidth()-1, 0));
-    int64_t y_outer_max = std::min<int64_t>((int64_t) (centerY+((outerDimension+.5)/2)), std::max<int64_t>(image.GetHeight()-1, 0));
-
-    int64_t x_inner_min = std::max<int64_t>((int64_t) (centerX-((innerDimension+.5)/2)), 0);
-    int64_t y_inner_min = std::max<int64_t>((int64_t) (centerY-((innerDimension+.5)/2)), 0);
-    int64_t x_inner_max = std::min<int64_t>((int64_t) (centerX+((innerDimension+.5)/2)), std::max<int64_t>(image.GetWidth()-1, 0));
-    int64_t y_inner_max = std::min<int64_t>((int64_t) (centerY+((innerDimension+.5)/2)), std::max<int64_t>(image.GetHeight()-1, 0));
-
-    for(int64_t x = x_outer_min; x <= x_outer_max; x++)
-    {
-        for(int64_t y = y_outer_min; y <= y_outer_max; y++)
-        {
-            if((y >= y_inner_min) && (y <= y_inner_max) && (x >= x_inner_min) && (x <= x_inner_max) )
-            {
-                continue;
-            }
-
-            for(int64_t depth : depths)
-            {
-                image.SetValue(fillValue, x, y, depth);
-            }
-        }
-    }
-}
-
-template<typename ValueType>
-void DrawImageAsAscii(const PseudoImage<ValueType>& image, int64_t depth, ValueType thresholdValue, char lessThanEqualValue, char greaterThanValue, std::ostream& output_stream)
-{
-    for(int64_t y = 0; y < image.GetHeight(); y++)
-    {
-        for(int64_t x = 0; x < image.GetWidth(); x++)
-        {
-            if(image.GetValue(x, y, depth) <= thresholdValue)
-            {
-                output_stream << lessThanEqualValue;
-            }
-            else
-            {
-                output_stream << greaterThanValue;
-            }
-        }
-        output_stream << std::endl;
-    }
-}
-
-template<typename ValueType>
-std::pair<std::vector<int32_t>, std::vector<PseudoImage<ValueType>>> CreateShapeImageTrainingData(ValueType defaultValue, ValueType shapeFillValue, int64_t imageDepth, const std::vector<int64_t>& depthsToShapeFill)
-{
-    std::pair<std::vector<int32_t>, std::vector<PseudoImage<ValueType>>> result;
-    std::vector<int32_t>& labels = result.first;
-    std::vector<PseudoImage<ValueType>>& images = result.second;
-
-    for(int64_t x_offset = -3; x_offset <= 3; x_offset++ )
-    {
-        for(int64_t y_offset = -3; y_offset <= 3; y_offset++ )
-        {
-            //Add square example
-            images.emplace_back(20, 20, imageDepth);
-            PseudoImage<ValueType>& square_image = images.back();
-            Fill<ValueType>(defaultValue, square_image);
-            DrawSquare<ValueType>(10+x_offset, 10+y_offset, 8, 10, shapeFillValue, depthsToShapeFill, square_image);
-
-            //Squares get label 0
-            labels.emplace_back(0);
-
-            //Add circle example
-            images.emplace_back(20, 20, imageDepth);
-            PseudoImage<ValueType>& circle_image = images.back();
-            Fill<ValueType>(defaultValue, circle_image);
-            DrawCircle<ValueType>(10+x_offset, 10+y_offset, 3.0, 5.0, shapeFillValue, depthsToShapeFill, circle_image);
-
-            //Circles get label 1
-            labels.emplace_back(1);
-        }
-    }
-
-    return result;
-}
-
-template<typename ValueType>
-void VisualizeTrainingData(const std::vector<int32_t>& labels, const std::vector<PseudoImage<ValueType>>& images, ValueType threshold)
-{
-    SOM_ASSERT(labels.size() == images.size(), "Number of labels and images must match");
-
-    //Draw all generated training data
-    for(int64_t example_index = 0; example_index < labels.size(); example_index++)
-    {
-        std::cout << "Label: " << labels[example_index] << std::endl << std::endl;
-
-        for(int64_t depth = 0; depth < images[example_index].GetDepth(); depth++)
-        {
-            DrawImageAsAscii<char>(images[example_index], depth, threshold, 'O', 'X', std::cout);
-
-            std::cout << std::endl;
-        }
-    }
-}
-
-bool BlobNamesFound(const std::vector<std::string>& blobNames, const caffe2::Workspace& workspace)
-{
-std::vector<std::string> current_blobs = workspace.Blobs();
-
-for(const std::string& blob_name : blobNames)
-{
-if(std::find(current_blobs.begin(), current_blobs.end(), blob_name) == current_blobs.end())
-{
-return false;
-}
-}
-
-return true;
-}
-
-bool BlobShapeMatches(const std::string& blobName, const std::vector<int64_t>& expectedShape, const caffe2::Workspace& workspace)
-{
-caffe2::TensorCPU tensor = GoodBot::GetTensor(*workspace.GetBlob(blobName));
-
-return expectedShape == tensor.dims();
 }
 
 TEST_CASE("Draw shapes", "[Example]")
@@ -296,7 +57,7 @@ TEST_CASE("Draw shapes", "[Example]")
     std::vector<int32_t> labels;
     std::vector<PseudoImage<char>> images;
 
-    std::tie(labels, images) = CreateShapeImageTrainingData<char>(0, 100, 1, {0});
+    std::tie(labels, images) = CreateShapeCategorizationImageTrainingData<char>(0, 100, 1, {0});
 
     REQUIRE(labels.size() > 0);
     REQUIRE(labels.size() == images.size());
@@ -304,7 +65,140 @@ TEST_CASE("Draw shapes", "[Example]")
     //VisualizeTrainingData<char>(labels, images, 0);
 }
 
-TEST_CASE("Simple conv network", "[Example]")
+TEST_CASE("Simple localization conv network", "[Example]")
+{
+    //Loop through different input depths
+    for(int64_t input_depth : {1, 2, 3})
+    {
+
+    //Create the Caffe2 workspace/context
+    caffe2::Workspace workspace;
+    caffe2::CPUContext context;
+
+    GoodBot::NetSpace netspace(workspace);
+
+    /** Create inputs/outputs */
+
+    //Batch size, channel depth, width/height
+    GoodBot::AddConstantFillOp("init_interfaces_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, input_depth, 20, 20}, {"INIT"}, false, netspace);
+
+    //Batch size, expected category
+    GoodBot::AddConstantFillOp("init_interfaces_expected_output", "expected_output_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 2}, {"INIT"}, false, netspace);
+
+    //Create input blobs
+    caffe2::NetDef input_init_network = GoodBot::GetNetwork("init_interfaces", "INIT", false, netspace);
+    caffe2::NetBase* init_interfaces_net = workspace.CreateNet(input_init_network);
+    init_interfaces_net->Run();
+
+    REQUIRE(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace));
+    REQUIRE(BlobShapeMatches("input_blob", {1, input_depth, 20, 20}, workspace));
+    REQUIRE(BlobShapeMatches("expected_output_blob", {1, 2}, workspace));
+
+    caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
+    caffe2::TensorCPU& expected_output_blob = GoodBot::GetMutableTensor("expected_output_blob", workspace);
+
+    //Produce the training data
+    std::vector<std::array<float, 2>> training_expected_output;
+    std::vector<PseudoImage<char>> images;
+
+    //If we have a depth of more than one, make a copy of the training data with exactly one of the depth layers drawn on for each possible depth.
+    for(int64_t fill_depth_index = 0; fill_depth_index < input_depth; fill_depth_index++)
+    {
+        std::vector<std::array<float, 2>> training_expected_output_buffer;
+        std::vector<PseudoImage<char>> images_buffer;
+
+        std::tie(training_expected_output_buffer, images_buffer) = CreateShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
+
+        training_expected_output.insert(training_expected_output.end(), training_expected_output_buffer.begin(), training_expected_output_buffer.end());
+        images.insert(images.end(), images_buffer.begin(), images_buffer.end());
+    }
+
+
+    PairedRandomShuffle(images, training_expected_output);
+
+    //Make the training network
+    GoodBot::AddCastOp("shape_2d_localize_cast", "input_blob", "INT8", "input_blob_casted", "FLOAT", {}, netspace);
+    AddScaleOp("shape_2d_localize_scale", "input_blob_casted", "input_blob_scaled", (1.0/128.0), {}, netspace);
+
+    //conv (3x3, 20 channels)
+    //conv (3x3, 20 channels)
+    //Relu
+    AddConvModule("shape_2d_localize_conv_1", "input_blob_scaled", "shape_2d_localize_conv_1", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+    AddConvModule("shape_2d_localize_conv_2", "shape_2d_localize_conv_1", "shape_2d_localize_conv_2", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+    AddReluOp("shape_2d_localize_conv_2_relu_1", "shape_2d_localize_conv_2", "shape_2d_localize_conv_2", {}, netspace);
+
+    //conv (3x3, 20 channels)
+    //conv (3x3, 20 channels)
+    //Relu
+    AddConvModule("shape_2d_localize_conv_3", "shape_2d_localize_conv_2", "shape_2d_localize_conv_3", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+    AddConvModule("shape_2d_localize_conv_4", "shape_2d_localize_conv_3", "shape_2d_localize_conv_4", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+    AddReluOp("shape_2d_localize_conv_4_relu_2", "shape_2d_localize_conv_4", "shape_2d_localize_conv_4", {}, netspace);
+
+    //relu fc 500
+    //relu fc 500
+    //fc 2
+    //softmax
+    AddFullyConnectedModuleWithActivation("shape_2d_localize_fc_1", "shape_2d_localize_conv_4", "shape_2d_localize_fc_1", 512, "Relu", "XavierFill", "ConstantFill", netspace);
+    AddFullyConnectedModuleWithActivation("shape_2d_localize_fc_2", "shape_2d_localize_fc_1", "shape_2d_localize_fc_2", 512, "Relu", "XavierFill", "ConstantFill", netspace);
+    AddFullyConnectedModule("shape_2d_localize_fc_3", "shape_2d_localize_fc_2", "shape_2d_localize_fc_3", 2, "XavierFill", "ConstantFill", netspace);
+
+    //Make loss/loopback for gradient
+    AddSquaredL2DistanceOp("shape_2d_localize_loss_l2_dist", "shape_2d_localize_fc_3", "expected_output_blob", "shape_2d_localize_loss_l2_dist", {"TRAIN", "TEST"}, netspace);
+    AddAveragedLossOp("shape_2d_localize_avg_loss", "shape_2d_localize_loss_l2_dist", "shape_2d_localize_avg_loss", {"TRAIN", "TEST"}, netspace);
+    AddNetworkGradientLoopBack("shape_2d_localize_gradient_loop_back", "shape_2d_localize_avg_loss", {"TRAIN", "TEST"}, netspace);
+
+    //Add gradient ops
+    AddGradientOperators("shape_2d_localize", {"TRAIN", "TEST"}, netspace);
+
+    //Add solver ops -> lower than .001 learning rate n
+    GoodBot::AddAdamSolvers("shape_2d_localize", netspace, .9, .999, 1e-5, -.0001);
+
+    //Initialize network
+    caffe2::NetDef shape_2d_localize_init_def = GoodBot::GetNetwork("shape_2d_localize", "INIT", false, netspace);
+    caffe2::NetBase* shape_2d_localize_init_net = workspace.CreateNet(shape_2d_localize_init_def);
+    shape_2d_localize_init_net->Run();
+
+    //Create training network
+    caffe2::NetDef shape_2d_localize_train_def = GoodBot::GetNetwork("shape_2d_localize", "TRAIN", true, netspace);
+    caffe2::NetBase* shape_2d_localize_train_net = workspace.CreateNet(shape_2d_localize_train_def);
+
+    GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
+
+    int64_t number_of_training_iterations = 30000;
+    for(int64_t iteration = 0; iteration < number_of_training_iterations; iteration++)
+    {
+    //Shuffle data every epoc through
+    if((iteration % training_expected_output.size()) == 0)
+    {
+    PairedRandomShuffle(images, training_expected_output);
+    }
+
+    //Load data into blobs
+    SOM_ASSERT(images[iteration % images.size()].GetSize() == input_blob.nbytes(), "Image size differs from input_blob size (" + std::to_string(images[iteration % images.size()].GetSize()) + " vs " + std::to_string(input_blob.nbytes())) + ")";
+    memcpy(input_blob.mutable_data<int8_t>(), images[iteration % images.size()].GetData(), input_blob.nbytes());
+
+    SOM_ASSERT(sizeof(training_expected_output[iteration % training_expected_output.size()]) == expected_output_blob.nbytes(), "output size mismatch");
+    memcpy(expected_output_blob.mutable_data<float>(), &(training_expected_output[iteration % training_expected_output.size()][0]), expected_output_blob.nbytes());
+
+    //Run network with loaded instance
+    shape_2d_localize_train_net->Run();
+
+    //Get loss exponentially weighted moving average
+    caffe2::TensorCPU& loss = GoodBot::GetMutableTensor("shape_2d_localize_avg_loss", workspace);
+
+    caffe2::TensorCPU& shape_2d_localize_fc_3 = GoodBot::GetMutableTensor("shape_2d_localize_fc_3", workspace);
+
+    moving_average.Update((double) *loss.mutable_data<float>());
+
+    //std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << " " << expected_output_blob.mutable_data<float>()[0] << " " << expected_output_blob.mutable_data<float>()[1]
+    //          << " " << shape_2d_localize_fc_3.mutable_data<float>()[0] << " " << shape_2d_localize_fc_3.mutable_data<float>()[1] << std::endl;
+    }
+    REQUIRE(moving_average.GetAverage() < .01);
+    }
+}
+
+
+TEST_CASE("Simple categorization conv network", "[Example]")
 {
     //Loop through different input depths
     for(int64_t input_depth : {1, 2, 3})
@@ -346,12 +240,11 @@ TEST_CASE("Simple conv network", "[Example]")
         std::vector<int32_t> labels_buffer;
         std::vector<PseudoImage<char>> images_buffer;
 
-        std::tie(labels_buffer, images_buffer) = CreateShapeImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
+        std::tie(labels_buffer, images_buffer) = CreateShapeCategorizationImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
 
         labels.insert(labels.end(), labels_buffer.begin(), labels_buffer.end());
         images.insert(images.end(), images_buffer.begin(), images_buffer.end());
     }
-
 
     PairedRandomShuffle(images, labels);
 
@@ -437,6 +330,7 @@ TEST_CASE("Simple conv network", "[Example]")
     REQUIRE(moving_average.GetAverage() < .01);
     }
 }
+
 
 TEST_CASE("Try netop syntax", "[Example]")
 {

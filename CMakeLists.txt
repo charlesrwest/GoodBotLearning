@@ -20,13 +20,14 @@ find_package(Protobuf REQUIRED)
 find_package(CUDA REQUIRED)
 find_library(CAFFE2_LIB Caffe2_CPU)
 find_library(CAFFE2_GPU_LIB Caffe2_GPU)
+find_package(NLOPT REQUIRED)
 
 add_definitions(-DWITH_GPU)
 
 #Tell compiler where to find required libraries
 link_directories(/usr/lib/x86_64-linux-gnu/)
 
-include_directories(./src/library/ ./src/executables/unitTests ./src/executables/categoricalVGG ./Catch/single_include ${Caffe2_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+include_directories(./src/library/ ./src/executables/unitTests ./src/executables/categoricalVGG ./Catch/single_include ${Caffe2_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS} ${NLOPT_INCLUDE_DIRS})
 
 find_package(Threads)
 
@@ -46,7 +47,7 @@ ADD_EXECUTABLE(unitTests ${UNIT_TESTS_EXECUTABLE_SOURCE})
 
 ADD_EXECUTABLE(categoricalVGG ${CATEGORICAL_VGG_SOURCE}) 
 
-target_link_libraries(commonLibrary dl ${CMAKE_THREAD_LIBS_INIT} ${CAFFE2_LIB} ${CAFFE2_GPU_LIB} ${PROTOBUF_LIBRARY} glog ${CUDA_LIBRARIES} ${CUDA_CUDART_LIBRARY} ${CUDA_curand_LIBRARY} ${NCCL_LIB}) 
+target_link_libraries(commonLibrary dl ${CMAKE_THREAD_LIBS_INIT} ${CAFFE2_LIB} ${CAFFE2_GPU_LIB} ${PROTOBUF_LIBRARY} glog ${CUDA_LIBRARIES} ${CUDA_CUDART_LIBRARY} ${CUDA_curand_LIBRARY} ${NCCL_LIB} ${NLOPT_LIBRARIES}) 
 
 #link libraries to executable
 target_link_libraries(unitTests commonLibrary)
