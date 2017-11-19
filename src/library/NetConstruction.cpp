@@ -425,3 +425,17 @@ void GoodBot::AddMaxPoolOp(const std::string& opName, const std::string& inputNa
 
     netspace.AddNetOp(op);
 }
+
+void GoodBot::AddCopyCPUToGPU(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "CopyCPUToGPU", {}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddCopyGPUToCPU(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName}, {outputName}, "CopyGPUToCPU", {}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}

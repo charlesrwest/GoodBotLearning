@@ -28,14 +28,7 @@ std::swap(expectedOutputData[index], expectedOutputData[elementToSwapWithIndex])
 };
 
 //Add function to allow printing of network architectures
-std::function<void(const google::protobuf::Message&)> print = [&](const google::protobuf::Message& inputMessage)
-{
-std::string buffer;
-
-google::protobuf::TextFormat::PrintToString(inputMessage, &buffer);
-
-std::cout << buffer<<std::endl;
-};
+void print(const google::protobuf::Message& inputMessage);
 
 template<typename ValueType>
 class PseudoImage
@@ -195,6 +188,37 @@ void DrawImageAsAscii(const PseudoImage<ValueType>& image, int64_t depth, ValueT
         output_stream << std::endl;
     }
 }
+
+template<class DataType>
+void AddDataToVector(const DataType& data, std::vector<char>& outputBuffer)
+{
+    for(int64_t data_index = 0; data_index < sizeof(data); data_index++)
+    {
+        outputBuffer.emplace_back(((const char *)&data)[data_index]);
+    }
+}
+
+template<class DataType>
+void AddDataToVector(const std::vector<DataType>& data, std::vector<char>& outputBuffer)
+{
+    for(int64_t data_index = 0; data_index < data.size(); data_index++)
+    {
+        AddDataToVector(data[data_index], outputBuffer);
+    }
+}
+
+template<class DataType, std::size_t ArraySize>
+void AddDataToVector(const std::array<DataType, ArraySize>& data, std::vector<char>& outputBuffer)
+{
+    for(int64_t data_index = 0; data_index < data.size(); data_index++)
+    {
+        AddDataToVector(data[data_index], outputBuffer);
+    }
+}
+
+void AddDataToVector(const PseudoImage<char>& data, std::vector<char>& outputBuffer);
+
+std::pair<std::vector<char>, std::vector<char>> SplitDataSet(double fractionInFirstSet, int64_t exampleSizeInBytes, const std::vector<char>& dataSet);
 
 template<typename ValueType>
 std::pair<std::vector<int32_t>, std::vector<PseudoImage<ValueType>>> CreateShapeCategorizationImageTrainingData(ValueType defaultValue, ValueType shapeFillValue, int64_t imageDepth, const std::vector<int64_t>& depthsToShapeFill)

@@ -13,7 +13,7 @@
 #include "SOMException.hpp"
 #include "caffe2/core/init.h"
 #include "caffe2/core/context_gpu.h"
-#include "DataLoader.hpp"
+#include "RandomizedFileDataLoader.hpp"
 #include "DataSynchronizer.hpp"
 #include "AveragedLossLayerDefinition.hpp"
 #include "LabelCrossEntropyOperator.hpp"
@@ -142,7 +142,7 @@ caffe2::NetBase* trainingNetwork = workspace.CreateNet(trainingNetworkDefinition
 //workspace.PrintBlobSizes();
 
 //Setup IO with the training data set
-GoodBot::DataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint8_t), sizeof(int32_t), 10, 1, 1);
+GoodBot::RandomizedFileDataLoader loader("../data/trainingData.blobber", 3*224*224*sizeof(uint8_t), sizeof(int32_t), 10, 1, 1);
 
 GoodBot::DataSynchronizer training_data_synchronizer("training_data_synchronizer", {{"input_blob_cpu", "input_blob_gpu"}, {"expected_output_blob_cpu", "expected_output_blob_gpu"}}, workspace);
 

@@ -1,0 +1,214 @@
+
+#include "ExponentialMovingAverage.hpp"
+#include "NetConstruction.hpp"
+#include "TestHelpers.hpp"
+#include "MemoryDataLoader.hpp"
+#include "ExperimentLogger.hpp"
+#include "caffe2/core/context_gpu.h"
+
+int main(int argc, char **argv)
+{
+    std::function<double(const std::vector<double>&, const std::vector<int64_t>&)> TestHyperParameter =
+            [](const std::vector<double>& doubleParameters, const std::vector<int64_t>& integerParameters)
+    {
+        //We expect one integer parameter which indicates the image depth to use
+        SOM_ASSERT(integerParameters.size() == 1, "Expected single integer parameter");
+        SOM_ASSERT(doubleParameters.size() == 0, "Expected no double parameters");
+
+        int64_t input_depth = integerParameters[0];
+
+        //Produce the training data
+        std::vector<std::array<float, 2>> training_expected_output;
+        std::vector<PseudoImage<char>> images;
+
+        //If we have a depth of more than one, make a copy of the training data with exactly one of the depth layers drawn on for each possible depth.
+        for(int64_t fill_depth_index = 0; fill_depth_index < input_depth; fill_depth_index++)
+        {
+            std::vector<std::array<float, 2>> training_expected_output_buffer;
+            std::vector<PseudoImage<char>> images_buffer;
+
+            std::tie(training_expected_output_buffer, images_buffer) = CreateShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
+
+            training_expected_output.insert(training_expected_output.end(), training_expected_output_buffer.begin(), training_expected_output_buffer.end());
+            images.insert(images.end(), images_buffer.begin(), images_buffer.end());
+        }
+
+        PairedRandomShuffle(images, training_expected_output);
+
+        int64_t number_of_examples = images.size();
+
+        std::cout << "There are " << number_of_examples << " examples with inputs of size " << images[0].GetSize() << " and outputs of size " << sizeof(float)*2 << std::endl;
+
+        std::vector<char> network_inputs, network_training_inputs, network_test_inputs;
+        AddDataToVector(images, network_inputs);
+
+        std::vector<char> expected_network_outputs, expected_network_training_outputs, expected_network_test_outputs;
+        AddDataToVector(training_expected_output, expected_network_outputs);
+
+        double training_fraction = .8;
+
+        std::tie(network_training_inputs, network_test_inputs) = SplitDataSet(training_fraction, network_inputs.size() / number_of_examples, network_inputs);
+
+        std::tie(expected_network_training_outputs, expected_network_test_outputs) = SplitDataSet(training_fraction, expected_network_outputs.size() / number_of_examples, expected_network_outputs);
+
+        int64_t number_of_training_examples = number_of_examples*training_fraction;
+        int64_t number_of_test_examples = number_of_examples - number_of_training_examples;
+
+        GoodBot::MemoryDataLoader training_data_source(number_of_training_examples, network_training_inputs, expected_network_training_outputs);
+        GoodBot::MemoryDataLoader test_data_source(number_of_test_examples, network_test_inputs, expected_network_test_outputs);
+
+        std::cout << "There are " << training_data_source.GetNumberOfExamples() << " training examples" << std::endl;
+        std::cout << "There are " << test_data_source.GetNumberOfExamples() << " test examples" << std::endl;
+
+        //Create the Caffe2 workspace/context
+        caffe2::DeviceOption option;
+        option.set_device_type(caffe2::CUDA);
+        caffe2::CUDAContext cuda_context(option);
+
+        caffe2::Workspace workspace;
+
+        GoodBot::NetSpace netspace(workspace);
+
+        /** Create inputs/outputs */
+
+        //Batch size, channel depth, width/height
+        GoodBot::AddConstantFillOp("shape_2d_localize_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, input_depth, 20, 20}, {"INIT"}, false, caffe2::CPU, netspace);
+
+        //Batch size, expected category
+        GoodBot::AddConstantFillOp("shape_2d_localize_expected_output", "expected_output_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 2}, {"INIT"}, false, caffe2::CPU, netspace);
+
+        //TODO: Make operators to move input/expected output to GPU
+        GoodBot::AddCopyCPUToGPU("shape_2d_localize_input_blob_mover", "input_blob", "input_blob_gpu", {}, netspace);
+        GoodBot::AddCopyCPUToGPU("shape_2d_localize_expected_output_blob_mover", "expected_output_blob", "expected_output_blob_gpu", {}, netspace);
+
+        //Make the training network
+        GoodBot::AddCastOp("shape_2d_localize_cast", "input_blob_gpu", "INT8", "input_blob_casted", "FLOAT", {}, netspace);
+        AddScaleOp("shape_2d_localize_scale", "input_blob_casted", "input_blob_scaled", (1.0/128.0), {}, netspace);
+
+        //conv (3x3, 20 channels)
+        //conv (3x3, 20 channels)
+        //Relu
+        AddConvModule("shape_2d_localize_conv_1", "input_blob_scaled", "shape_2d_localize_conv_1", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+        AddConvModule("shape_2d_localize_conv_2", "shape_2d_localize_conv_1", "shape_2d_localize_conv_2", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+        AddReluOp("shape_2d_localize_conv_2_relu_1", "shape_2d_localize_conv_2", "shape_2d_localize_conv_2", {}, netspace);
+
+        //conv (3x3, 20 channels)
+        //conv (3x3, 20 channels)
+        //Relu
+        AddConvModule("shape_2d_localize_conv_3", "shape_2d_localize_conv_2", "shape_2d_localize_conv_3", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+        AddConvModule("shape_2d_localize_conv_4", "shape_2d_localize_conv_3", "shape_2d_localize_conv_4", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+        AddReluOp("shape_2d_localize_conv_4_relu_2", "shape_2d_localize_conv_4", "shape_2d_localize_conv_4", {}, netspace);
+
+        //relu fc 500
+        //relu fc 500
+        //fc 2
+        //softmax
+        AddFullyConnectedModuleWithActivation("shape_2d_localize_fc_1", "shape_2d_localize_conv_4", "shape_2d_localize_fc_1", 512, "Relu", "XavierFill", "ConstantFill", netspace);
+        AddFullyConnectedModuleWithActivation("shape_2d_localize_fc_2", "shape_2d_localize_fc_1", "shape_2d_localize_fc_2", 512, "Relu", "XavierFill", "ConstantFill", netspace);
+        AddFullyConnectedModule("shape_2d_localize_fc_3", "shape_2d_localize_fc_2", "shape_2d_localize_fc_3", 2, "XavierFill", "ConstantFill", netspace);
+
+        //Make loss/loopback for gradient
+        AddSquaredL2DistanceOp("shape_2d_localize_loss_l2_dist", "shape_2d_localize_fc_3", "expected_output_blob_gpu", "shape_2d_localize_loss_l2_dist", {"TRAIN", "TEST"}, netspace);
+        AddAveragedLossOp("shape_2d_localize_avg_loss", "shape_2d_localize_loss_l2_dist", "shape_2d_localize_avg_loss", {"TRAIN", "TEST"}, netspace);
+        AddNetworkGradientLoopBack("shape_2d_localize_gradient_loop_back", "shape_2d_localize_avg_loss", {"TRAIN", "TEST"}, netspace);
+
+        //Add gradient ops
+        AddGradientOperators("shape_2d_localize", {"TRAIN", "TEST"}, netspace);
+
+        //Add solver ops -> lower than .001 learning rate n
+        GoodBot::AddAdamSolvers("shape_2d_localize", netspace, .9, .999, 1e-5, -.0001);
+
+        //Make ops to move output and loss to CPU
+        GoodBot::AddCopyGPUToCPU("shape_2d_localize_avg_loss_mover", "shape_2d_localize_avg_loss", "shape_2d_localize_avg_loss_cpu", {}, netspace);
+        GoodBot::AddCopyGPUToCPU("shape_2d_localize_fc_3_mover", "shape_2d_localize_fc_3", "shape_2d_localize_fc_3_cpu", {}, netspace);
+
+        //Initialize network
+        caffe2::NetDef shape_2d_localize_init_def = GoodBot::GetNetwork("shape_2d_localize", "INIT", false, netspace);
+
+        shape_2d_localize_init_def.mutable_device_option()->set_device_type(caffe2::CUDA); //Set type to CUDA for all ops which have not directly forced CPU
+
+        caffe2::NetBase* shape_2d_localize_init_net = workspace.CreateNet(shape_2d_localize_init_def);
+        shape_2d_localize_init_net->Run();
+
+        SOM_ASSERT(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace), "Missing blob names");
+        SOM_ASSERT(BlobShapeMatches("input_blob", {1, input_depth, 20, 20}, workspace), "Incorrect input shape");
+        SOM_ASSERT(BlobShapeMatches("expected_output_blob", {1, 2}, workspace), "Incorrect output shape");
+
+        caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
+        caffe2::TensorCPU& expected_output_blob = GoodBot::GetMutableTensor("expected_output_blob", workspace);
+
+
+        //Create training network
+        caffe2::NetDef shape_2d_localize_train_def = GoodBot::GetNetwork("shape_2d_localize", "TRAIN", true, netspace);
+        shape_2d_localize_train_def.mutable_device_option()->set_device_type(caffe2::CUDA); //Set type to CUDA for all ops which have not directly forced CPU
+        caffe2::NetBase* shape_2d_localize_train_net = workspace.CreateNet(shape_2d_localize_train_def);
+
+        //Create test network
+        caffe2::NetDef shape_2d_localize_test_def = GoodBot::GetNetwork("shape_2d_localize", "TEST", true, netspace);
+        shape_2d_localize_test_def.mutable_device_option()->set_device_type(caffe2::CUDA); //Set type to CUDA for all ops which have not directly forced CPU
+        caffe2::NetBase* shape_2d_localize_test_net = workspace.CreateNet(shape_2d_localize_test_def);
+
+        GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
+
+        int64_t number_of_training_iterations = 30000;
+        int64_t train_epoc_index = 0;
+        int64_t number_of_training_epocs = 10;
+        double best_test_loss = std::numeric_limits<double>::max();
+        for(int64_t iteration = 0; train_epoc_index < number_of_training_epocs; iteration++)
+        {
+        //Load data into blobs
+        bool last_example_in_train_epoc = training_data_source.ReadBlob((char *) input_blob.mutable_data<int8_t>(),
+                                                                  (char *) expected_output_blob.mutable_data<float>());
+        //Run network with loaded instance
+        shape_2d_localize_train_net->Run();
+
+        //Get loss exponentially weighted moving average
+        caffe2::TensorCPU& loss = GoodBot::GetMutableTensor("shape_2d_localize_avg_loss_cpu", workspace);
+
+        caffe2::TensorCPU& shape_2d_localize_fc_3 = GoodBot::GetMutableTensor("shape_2d_localize_fc_3_cpu", workspace);
+
+        moving_average.Update((double) *loss.mutable_data<float>());
+
+        std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << " " << expected_output_blob.mutable_data<float>()[0] << " " << expected_output_blob.mutable_data<float>()[1]
+                  << " " << shape_2d_localize_fc_3.mutable_data<float>()[0] << " " << shape_2d_localize_fc_3.mutable_data<float>()[1] << " " << train_epoc_index << std::endl;
+
+        if(last_example_in_train_epoc)
+        {
+            //Get the average test error
+            bool last_example_in_test_epoc = false;
+            int64_t test_epoc_count = 0;
+            double average_test_loss = 0.0;
+            while(!last_example_in_test_epoc)
+            {
+                last_example_in_test_epoc = test_data_source.ReadBlob((char *) input_blob.mutable_data<int8_t>(),
+                                                                              (char *) expected_output_blob.mutable_data<float>());
+                //Run network with loaded instance
+                shape_2d_localize_test_net->Run();
+
+                average_test_loss += *loss.mutable_data<float>();
+
+                test_epoc_count++;
+            }
+            average_test_loss = average_test_loss / test_epoc_count;
+
+            best_test_loss = std::min(average_test_loss, best_test_loss);
+            std::cout << "Average test loss: " << average_test_loss << std::endl;
+
+            train_epoc_index++;
+        }
+        }
+        SOM_ASSERT(best_test_loss < .01, "Best test loss higher than expected");
+        SOM_ASSERT(moving_average.GetAverage() < .01, "Training error higher than expected");
+
+        return best_test_loss;
+    };
+
+    //Loop through different input depths
+    for(int64_t input_depth : {1, 2, 3})
+    {
+        TestHyperParameter({}, {input_depth});
+    }
+
+
+return 0;
+}

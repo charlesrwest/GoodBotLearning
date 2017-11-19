@@ -38,6 +38,8 @@ FILE(GLOB UNIT_TESTS_EXECUTABLE_SOURCE ./src/executables/unitTests/*.cpp ./src/e
 
 FILE(GLOB CATEGORICAL_VGG_SOURCE ./src/executables/categoricalVGG/*.cpp ./src/executables/categoricalVGG/*.c)
 
+FILE(GLOB EXPERIMENTER_SOURCE ./src/executables/experimenter/*.cpp ./src/executables/experimenter/*.c)
+
 #Create a libraries
 add_library(commonLibrary SHARED  ${SOURCEFILES})
 
@@ -47,9 +49,13 @@ ADD_EXECUTABLE(unitTests ${UNIT_TESTS_EXECUTABLE_SOURCE})
 
 ADD_EXECUTABLE(categoricalVGG ${CATEGORICAL_VGG_SOURCE}) 
 
-target_link_libraries(commonLibrary dl ${CMAKE_THREAD_LIBS_INIT} ${CAFFE2_LIB} ${CAFFE2_GPU_LIB} ${PROTOBUF_LIBRARY} glog ${CUDA_LIBRARIES} ${CUDA_CUDART_LIBRARY} ${CUDA_curand_LIBRARY} ${NCCL_LIB} ${NLOPT_LIBRARIES}) 
+ADD_EXECUTABLE(experimenter ${EXPERIMENTER_SOURCE}) 
+
+target_link_libraries(commonLibrary dl sqlite3 ${CMAKE_THREAD_LIBS_INIT} ${CAFFE2_LIB} ${CAFFE2_GPU_LIB} ${PROTOBUF_LIBRARY} glog ${CUDA_LIBRARIES} ${CUDA_CUDART_LIBRARY} ${CUDA_curand_LIBRARY} ${NCCL_LIB} ${NLOPT_LIBRARIES}) 
 
 #link libraries to executable
 target_link_libraries(unitTests commonLibrary)
 
 target_link_libraries(categoricalVGG commonLibrary)
+
+target_link_libraries(experimenter commonLibrary)

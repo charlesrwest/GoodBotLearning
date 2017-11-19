@@ -59,7 +59,10 @@ void AddFullyConnectedModuleWithActivation(const std::string& opName, const std:
 template<class DType>
 void AddConstantFillOp(const std::string& opName, const std::string& outputName, DType value,  caffe2::TensorProto::DataType type, const std::vector<int64_t>& blobDimensions, const std::vector<std::string>& activeModes, bool isTrainable, NetSpace& netspace)
 {
-    AddConstantFillOp(opName, outputName, value, type, blobDimensions, activeModes, isTrainable, caffe2::CPU, netspace); //CPU device type
+    caffe2::OperatorDef op_def = GoodBot::CreateOpDef(opName, {}, {outputName}, "ConstantFill", {{"shape", blobDimensions}, {"value", value}, {"dtype", type}});
+    NetOp op(op_def, activeModes, isTrainable);
+
+    netspace.AddNetOp(op);
 }
 
 template<class DType>
@@ -103,5 +106,9 @@ void AddConvModule(const std::string& opName, const std::string& inputName, cons
 void AddConvModuleWithActivation(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t outputDepth, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& activationType, const std::string& weightFillType, const std::string& biasFillType, NetSpace& netspace);
 
 void AddMaxPoolOp(const std::string& opName, const std::string& inputName, const std::string& outputName, int64_t stride, int64_t paddingSize, int64_t kernelSize, const std::string& imageOrder, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddCopyCPUToGPU(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddCopyGPUToCPU(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
 }

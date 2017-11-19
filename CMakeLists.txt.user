@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.4.0, 2017-11-04T23:19:42. -->
+<!-- Written by QtCreator 4.4.0, 2017-11-18T20:22:52. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -215,9 +215,9 @@
     <value type="int" key="PE.EnvironmentAspect.Base">2</value>
     <valuelist type="QVariantList" key="PE.EnvironmentAspect.Changes"/>
     <value type="QString" key="ProjectExplorer.CustomExecutableRunConfiguration.Arguments"></value>
-    <value type="QString" key="ProjectExplorer.CustomExecutableRunConfiguration.Executable">/home/charlesrwest/cpp/projects/caffe2/cpp/GoodBotLearning/build/bin/unitTests</value>
+    <value type="QString" key="ProjectExplorer.CustomExecutableRunConfiguration.Executable">/home/charlesrwest/cpp/projects/caffe2/cpp/GoodBotLearning/build/bin/experimenter</value>
     <value type="QString" key="ProjectExplorer.CustomExecutableRunConfiguration.WorkingDirectory">%{buildDir}</value>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DefaultDisplayName">Run /home/charlesrwest/cpp/projects/caffe2/cpp/GoodBotLearning/build/bin/unitTests</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DefaultDisplayName">Run /home/charlesrwest/cpp/projects/caffe2/cpp/GoodBotLearning/build/bin/experimenter</value>
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName"></value>
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">ProjectExplorer.CustomExecutableRunConfiguration</value>
     <value type="uint" key="RunConfiguration.QmlDebugServerPort">3768</value>

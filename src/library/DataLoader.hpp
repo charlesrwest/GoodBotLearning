@@ -1,43 +1,59 @@
 #pragma once
 
-#include<random>
-#include<fstream>
-#include<queue>
+#include<cstdint>
 
 namespace GoodBot
 {
 
-//Size of input blobs, size of output blobs, number of blobs in buffer, number of buffers
+
+
 class DataLoader
 {
-public:
-DataLoader(const std::string& sourceFilePath, int64_t inputBlobSize, int64_t outputBlobSize, int64_t numberOfBlobsPerBuffer, int64_t numberOfBuffers, int64_t maxRereadsBeforeRefill);
+  public:
+    /**
+     * This function reads one or more example blobs from a data source and loads them into the requested buffer.
+     * @param inputBufferAddress: The buffer to load the input to the network to
+     * @param expectedOutputBufferAddress: The buffer to load the expected output of the network to
+     * @param numberOfBlobs: How many blobs to read from the data source
+     * @return: True if the end of an epoc was reached (if that isn't relavent, always returns false).
+     */
+    virtual bool ReadBlobs(char* inputBufferAddress, char* expectedOutputBufferAddress, int64_t numberOfBlobs);
 
-void ReadBlobs(char* inputBufferAddress, char* outputBufferAddress, int64_t numberOfBlobs); 
-void ReadBlob(char* inputBufferAddress, char* outputBufferAddress); 
+    /**
+     * This function reads one example blobs from a data source and loads them into the requested buffer.
+     * @param inputBufferAddress: The buffer to load the input to the network to
+     * @param expectedOutputBufferAddress: The buffer to load the expected output of the network to
+     * @return: True if the end of an epoc was reached (if that isn't relavent, always returns false).
+     */
+    virtual bool ReadBlob(char* inputBufferAddress, char* expectedOutputBufferAddress) = 0;
 
+    /**
+     * How many bytes a single example's input to the network is.
+     * @return: Number of bytes in input to the network if the batch size is 1
+     */
+    virtual int64_t GetInputDataSize() const = 0;
 
-protected:
-//Seek to a random place in the file and fill a buffer
-void FillBuffer(int64_t bufferIndex);
+    /**
+     * How many bytes a single example's expected network output is.
+     * @return: Number of bytes the network outputs to the network if the batch size is 1
+     */
+    virtual int64_t GetExpectedOutputDataSize() const = 0;
 
-std::random_device RandomDevice;
-std::mt19937 Randomness;
-std::uniform_int_distribution<int64_t> BufferSelector;
-std::uniform_int_distribution<int64_t> FileBlobIndexSelector;
-
-std::ifstream File;
-int64_t FileSizeInBytes;
-int64_t InputBlobSize;
-int64_t OutputBlobSize;
-int64_t NumberOfBlobsPerBuffer;
-int64_t MaxRereadsBeforeRefill;  //How many times to read each example in a buffer before refilling the buffer
-
-std::vector<std::queue<int64_t>> RandomBlobIndexBuffers;
-
-std::vector<std::vector<char>> InputBuffers;
-std::vector<std::vector<char>> OutputBuffers;
+    virtual ~DataLoader()
+    {
+    }
 };
+
+
+
+
+
+
+
+
+
+
+
 
 
 

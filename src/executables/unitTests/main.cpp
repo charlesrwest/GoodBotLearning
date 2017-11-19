@@ -15,7 +15,7 @@
 #include<fstream>
 #include<random>
 #include<cstdio>
-#include "DataLoader.hpp"
+#include "RandomizedFileDataLoader.hpp"
 #include "SOMScopeGuard.hpp"
 #include "AveragedLossLayerDefinition.hpp"
 #include "LabelCrossEntropyOperator.hpp"
@@ -27,7 +27,88 @@
 #include "ExponentialMovingAverage.hpp"
 #include "NetConstruction.hpp"
 #include "TestHelpers.hpp"
+#include "MemoryDataLoader.hpp"
+#include "ExperimentLogger.hpp"
+#include "SQLite3Wrapper.hpp"
+#include "SOMScopeGuard.hpp"
 
+TEST_CASE("Test experiment logger", "Logger")
+{
+    SOMScopeGuard file_guard([](){remove("testLoggerTmp.db");});
+
+    std::unique_ptr<GoodBot::ExperimentLogger> logger;
+
+    SOM_TRY
+            logger.reset(new GoodBot::ExperimentLogger("testLoggerTmp.db"));
+    SOM_CATCH("Error initializing logger")
+
+    std::vector<GoodBot::LogEntry> test_entries;
+    test_entries.emplace_back();
+    test_entries[0].ExperimentGroupName = "ExperimentGroupName1";
+    test_entries[0].DataSetName = "DataSetName1";
+    test_entries[0].InvestigationMethod = "InvestigationMethod1";
+    test_entries[0].BestTestError = 1.0;
+    test_entries[0].FinalTestError = 2.0;
+    test_entries[0].TimeOfCompletion = 3;
+    test_entries[0].RunTime = 4;
+    test_entries[0].NumberOfTrainingIterations = 5;
+    test_entries[0].NumberOfTrainingEpocs = 6;
+    test_entries[0].HashOfNetspace = "Hash1";
+    test_entries[0].NetspaceSummary = "NetSpaceSummary1";
+
+    test_entries[0].IntegerHyperParameters["IntBob"] = {7,8,9};
+    test_entries[0].IntegerHyperParameters["IntSaga"] = {10,11,12};
+    test_entries[0].DoubleHyperParameters["DoubleBob"] = {13.0,14.0,15.0};
+    test_entries[0].StringHyperParameters["StringBob"] = {"test","mellon", "sprite"};
+
+    SOM_TRY
+         logger->AddEntry(test_entries[0]);
+    SOM_CATCH("Error logging entry")
+
+    {
+        CRWUtility::SQLITE3::DatabaseConnection Session("testLoggerTmp.db");
+        std::vector<GoodBot::LogEntry> retrieved_entries = GoodBot::RetrieveAllEntries(Session);
+
+        REQUIRE(retrieved_entries.size() == test_entries.size());
+        for(int64_t entry_index = 0; entry_index < retrieved_entries.size(); entry_index++)
+        {
+            REQUIRE(retrieved_entries[entry_index] == test_entries[entry_index]);
+        }
+    }
+
+    test_entries.emplace_back();
+    test_entries[1].ExperimentGroupName = "ExperimentGroupName2";
+    test_entries[1].DataSetName = "DataSetName2";
+    test_entries[1].InvestigationMethod = "InvestigationMethod2";
+    test_entries[1].BestTestError = 16.0;
+    test_entries[1].FinalTestError = 17.0;
+    test_entries[1].TimeOfCompletion = 18;
+    test_entries[1].RunTime = 19;
+    test_entries[1].NumberOfTrainingIterations = 20;
+    test_entries[1].NumberOfTrainingEpocs = 21;
+    test_entries[1].HashOfNetspace = "Hash22";
+    test_entries[1].NetspaceSummary = "NetSpaceSummary23";
+
+    test_entries[1].IntegerHyperParameters["Int"] = {24,25};
+    test_entries[1].DoubleHyperParameters["DoubleBob"] = {26.0,27.0};
+    test_entries[1].DoubleHyperParameters["DoubleBob"] = {28.0,29.0};
+    test_entries[1].StringHyperParameters["StringBob"] = {"liz","Bello", "Tut"};
+
+    SOM_TRY
+         logger->AddEntry(test_entries[1]);
+    SOM_CATCH("Error logging entry")
+
+    {
+        CRWUtility::SQLITE3::DatabaseConnection Session("testLoggerTmp.db");
+        std::vector<GoodBot::LogEntry> retrieved_entries = GoodBot::RetrieveAllEntries(Session);
+
+        REQUIRE(retrieved_entries.size() == test_entries.size());
+        for(int64_t entry_index = 0; entry_index < retrieved_entries.size(); entry_index++)
+        {
+            REQUIRE(retrieved_entries[entry_index] == test_entries[entry_index]);
+        }
+    }
+}
 
 TEST_CASE("Test non-linear optimization with/without gradient", "[Example]")
 {
@@ -67,133 +148,190 @@ TEST_CASE("Draw shapes", "[Example]")
 
 TEST_CASE("Simple localization conv network", "[Example]")
 {
+    //Make function capatable with investigator framework
+    std::function<double(const std::vector<double>&, const std::vector<int64_t>&)> TestHyperParameter =
+            [](const std::vector<double>& doubleParameters, const std::vector<int64_t>& integerParameters)
+    {
+        //We expect one integer parameter which indicates the image depth to use
+        SOM_ASSERT(integerParameters.size() == 1, "Expected single integer parameter");
+        SOM_ASSERT(doubleParameters.size() == 0, "Expected no double parameters");
+
+        int64_t input_depth = integerParameters[0];
+
+        //Create the Caffe2 workspace/context
+        caffe2::Workspace workspace;
+        caffe2::CPUContext context;
+
+        GoodBot::NetSpace netspace(workspace);
+
+        /** Create inputs/outputs */
+
+        //Batch size, channel depth, width/height
+        GoodBot::AddConstantFillOp("shape_2d_localize_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, input_depth, 20, 20}, {"INIT"}, false, netspace);
+
+        //Batch size, expected category
+        GoodBot::AddConstantFillOp("shape_2d_localize_expected_output", "expected_output_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 2}, {"INIT"}, false, netspace);
+
+        //Produce the training data
+        std::vector<std::array<float, 2>> training_expected_output;
+        std::vector<PseudoImage<char>> images;
+
+        //If we have a depth of more than one, make a copy of the training data with exactly one of the depth layers drawn on for each possible depth.
+        for(int64_t fill_depth_index = 0; fill_depth_index < input_depth; fill_depth_index++)
+        {
+            std::vector<std::array<float, 2>> training_expected_output_buffer;
+            std::vector<PseudoImage<char>> images_buffer;
+
+            std::tie(training_expected_output_buffer, images_buffer) = CreateShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
+
+            training_expected_output.insert(training_expected_output.end(), training_expected_output_buffer.begin(), training_expected_output_buffer.end());
+            images.insert(images.end(), images_buffer.begin(), images_buffer.end());
+        }
+
+        PairedRandomShuffle(images, training_expected_output);
+
+        int64_t number_of_examples = images.size();
+
+        std::cout << "There are " << number_of_examples << " examples with inputs of size " << images[0].GetSize() << " and outputs of size " << sizeof(float)*2 << std::endl;
+
+        std::vector<char> network_inputs, network_training_inputs, network_test_inputs;
+        AddDataToVector(images, network_inputs);
+
+        std::vector<char> expected_network_outputs, expected_network_training_outputs, expected_network_test_outputs;
+        AddDataToVector(training_expected_output, expected_network_outputs);
+
+        double training_fraction = .8;
+
+        std::tie(network_training_inputs, network_test_inputs) = SplitDataSet(training_fraction, network_inputs.size() / number_of_examples, network_inputs);
+
+        std::tie(expected_network_training_outputs, expected_network_test_outputs) = SplitDataSet(training_fraction, expected_network_outputs.size() / number_of_examples, expected_network_outputs);
+
+        int64_t number_of_training_examples = number_of_examples*training_fraction;
+        int64_t number_of_test_examples = number_of_examples - number_of_training_examples;
+
+        GoodBot::MemoryDataLoader training_data_source(number_of_training_examples, network_training_inputs, expected_network_training_outputs);
+        GoodBot::MemoryDataLoader test_data_source(number_of_test_examples, network_test_inputs, expected_network_test_outputs);
+
+        std::cout << "There are " << training_data_source.GetNumberOfExamples() << " training examples" << std::endl;
+        std::cout << "There are " << test_data_source.GetNumberOfExamples() << " test examples" << std::endl;
+
+        //Make the training network
+        GoodBot::AddCastOp("shape_2d_localize_cast", "input_blob", "INT8", "input_blob_casted", "FLOAT", {}, netspace);
+        AddScaleOp("shape_2d_localize_scale", "input_blob_casted", "input_blob_scaled", (1.0/128.0), {}, netspace);
+
+        //conv (3x3, 20 channels)
+        //conv (3x3, 20 channels)
+        //Relu
+        AddConvModule("shape_2d_localize_conv_1", "input_blob_scaled", "shape_2d_localize_conv_1", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+        AddConvModule("shape_2d_localize_conv_2", "shape_2d_localize_conv_1", "shape_2d_localize_conv_2", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+        AddReluOp("shape_2d_localize_conv_2_relu_1", "shape_2d_localize_conv_2", "shape_2d_localize_conv_2", {}, netspace);
+
+        //conv (3x3, 20 channels)
+        //conv (3x3, 20 channels)
+        //Relu
+        AddConvModule("shape_2d_localize_conv_3", "shape_2d_localize_conv_2", "shape_2d_localize_conv_3", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+        AddConvModule("shape_2d_localize_conv_4", "shape_2d_localize_conv_3", "shape_2d_localize_conv_4", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+        AddReluOp("shape_2d_localize_conv_4_relu_2", "shape_2d_localize_conv_4", "shape_2d_localize_conv_4", {}, netspace);
+
+        //relu fc 500
+        //relu fc 500
+        //fc 2
+        //softmax
+        AddFullyConnectedModuleWithActivation("shape_2d_localize_fc_1", "shape_2d_localize_conv_4", "shape_2d_localize_fc_1", 512, "Relu", "XavierFill", "ConstantFill", netspace);
+        AddFullyConnectedModuleWithActivation("shape_2d_localize_fc_2", "shape_2d_localize_fc_1", "shape_2d_localize_fc_2", 512, "Relu", "XavierFill", "ConstantFill", netspace);
+        AddFullyConnectedModule("shape_2d_localize_fc_3", "shape_2d_localize_fc_2", "shape_2d_localize_fc_3", 2, "XavierFill", "ConstantFill", netspace);
+
+        //Make loss/loopback for gradient
+        AddSquaredL2DistanceOp("shape_2d_localize_loss_l2_dist", "shape_2d_localize_fc_3", "expected_output_blob", "shape_2d_localize_loss_l2_dist", {"TRAIN", "TEST"}, netspace);
+        AddAveragedLossOp("shape_2d_localize_avg_loss", "shape_2d_localize_loss_l2_dist", "shape_2d_localize_avg_loss", {"TRAIN", "TEST"}, netspace);
+        AddNetworkGradientLoopBack("shape_2d_localize_gradient_loop_back", "shape_2d_localize_avg_loss", {"TRAIN", "TEST"}, netspace);
+
+        //Add gradient ops
+        AddGradientOperators("shape_2d_localize", {"TRAIN", "TEST"}, netspace);
+
+        //Add solver ops -> lower than .001 learning rate n
+        GoodBot::AddAdamSolvers("shape_2d_localize", netspace, .9, .999, 1e-5, -.0001);
+
+        //Initialize network
+        caffe2::NetDef shape_2d_localize_init_def = GoodBot::GetNetwork("shape_2d_localize", "INIT", false, netspace);
+        caffe2::NetBase* shape_2d_localize_init_net = workspace.CreateNet(shape_2d_localize_init_def);
+        shape_2d_localize_init_net->Run();
+
+        REQUIRE(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace));
+        REQUIRE(BlobShapeMatches("input_blob", {1, input_depth, 20, 20}, workspace));
+        REQUIRE(BlobShapeMatches("expected_output_blob", {1, 2}, workspace));
+
+        caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
+        caffe2::TensorCPU& expected_output_blob = GoodBot::GetMutableTensor("expected_output_blob", workspace);
+
+
+        //Create training network
+        caffe2::NetDef shape_2d_localize_train_def = GoodBot::GetNetwork("shape_2d_localize", "TRAIN", true, netspace);
+        caffe2::NetBase* shape_2d_localize_train_net = workspace.CreateNet(shape_2d_localize_train_def);
+
+        //Create test network
+        caffe2::NetDef shape_2d_localize_test_def = GoodBot::GetNetwork("shape_2d_localize", "TEST", true, netspace);
+        caffe2::NetBase* shape_2d_localize_test_net = workspace.CreateNet(shape_2d_localize_test_def);
+
+        GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
+
+        int64_t number_of_training_iterations = 30000;
+        int64_t train_epoc_index = 0;
+        int64_t number_of_training_epocs = 10;
+        double best_test_loss = std::numeric_limits<double>::max();
+        for(int64_t iteration = 0; train_epoc_index < number_of_training_epocs; iteration++)
+        {
+        //Load data into blobs
+        bool last_example_in_train_epoc = training_data_source.ReadBlob((char *) input_blob.mutable_data<int8_t>(),
+                                                                  (char *) expected_output_blob.mutable_data<float>());
+        //Run network with loaded instance
+        shape_2d_localize_train_net->Run();
+
+        //Get loss exponentially weighted moving average
+        caffe2::TensorCPU& loss = GoodBot::GetMutableTensor("shape_2d_localize_avg_loss", workspace);
+
+        caffe2::TensorCPU& shape_2d_localize_fc_3 = GoodBot::GetMutableTensor("shape_2d_localize_fc_3", workspace);
+
+        moving_average.Update((double) *loss.mutable_data<float>());
+
+        std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << " " << expected_output_blob.mutable_data<float>()[0] << " " << expected_output_blob.mutable_data<float>()[1]
+                  << " " << shape_2d_localize_fc_3.mutable_data<float>()[0] << " " << shape_2d_localize_fc_3.mutable_data<float>()[1] << " " << train_epoc_index << std::endl;
+
+        if(last_example_in_train_epoc)
+        {
+            //Get the average test error
+            bool last_example_in_test_epoc = false;
+            int64_t test_epoc_count = 0;
+            double average_test_loss = 0.0;
+            while(!last_example_in_test_epoc)
+            {
+                last_example_in_test_epoc = test_data_source.ReadBlob((char *) input_blob.mutable_data<int8_t>(),
+                                                                              (char *) expected_output_blob.mutable_data<float>());
+                //Run network with loaded instance
+                shape_2d_localize_test_net->Run();
+
+                average_test_loss += *loss.mutable_data<float>();
+
+                test_epoc_count++;
+            }
+            average_test_loss = average_test_loss / test_epoc_count;
+
+            best_test_loss = std::min(average_test_loss, best_test_loss);
+            std::cout << "Average test loss: " << average_test_loss << std::endl;
+
+            train_epoc_index++;
+        }
+        }
+        REQUIRE(best_test_loss < .01);
+        REQUIRE(moving_average.GetAverage() < .01);
+
+        return best_test_loss;
+    };
+
     //Loop through different input depths
     for(int64_t input_depth : {1, 2, 3})
     {
-
-    //Create the Caffe2 workspace/context
-    caffe2::Workspace workspace;
-    caffe2::CPUContext context;
-
-    GoodBot::NetSpace netspace(workspace);
-
-    /** Create inputs/outputs */
-
-    //Batch size, channel depth, width/height
-    GoodBot::AddConstantFillOp("init_interfaces_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, input_depth, 20, 20}, {"INIT"}, false, netspace);
-
-    //Batch size, expected category
-    GoodBot::AddConstantFillOp("init_interfaces_expected_output", "expected_output_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 2}, {"INIT"}, false, netspace);
-
-    //Create input blobs
-    caffe2::NetDef input_init_network = GoodBot::GetNetwork("init_interfaces", "INIT", false, netspace);
-    caffe2::NetBase* init_interfaces_net = workspace.CreateNet(input_init_network);
-    init_interfaces_net->Run();
-
-    REQUIRE(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace));
-    REQUIRE(BlobShapeMatches("input_blob", {1, input_depth, 20, 20}, workspace));
-    REQUIRE(BlobShapeMatches("expected_output_blob", {1, 2}, workspace));
-
-    caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
-    caffe2::TensorCPU& expected_output_blob = GoodBot::GetMutableTensor("expected_output_blob", workspace);
-
-    //Produce the training data
-    std::vector<std::array<float, 2>> training_expected_output;
-    std::vector<PseudoImage<char>> images;
-
-    //If we have a depth of more than one, make a copy of the training data with exactly one of the depth layers drawn on for each possible depth.
-    for(int64_t fill_depth_index = 0; fill_depth_index < input_depth; fill_depth_index++)
-    {
-        std::vector<std::array<float, 2>> training_expected_output_buffer;
-        std::vector<PseudoImage<char>> images_buffer;
-
-        std::tie(training_expected_output_buffer, images_buffer) = CreateShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
-
-        training_expected_output.insert(training_expected_output.end(), training_expected_output_buffer.begin(), training_expected_output_buffer.end());
-        images.insert(images.end(), images_buffer.begin(), images_buffer.end());
-    }
-
-
-    PairedRandomShuffle(images, training_expected_output);
-
-    //Make the training network
-    GoodBot::AddCastOp("shape_2d_localize_cast", "input_blob", "INT8", "input_blob_casted", "FLOAT", {}, netspace);
-    AddScaleOp("shape_2d_localize_scale", "input_blob_casted", "input_blob_scaled", (1.0/128.0), {}, netspace);
-
-    //conv (3x3, 20 channels)
-    //conv (3x3, 20 channels)
-    //Relu
-    AddConvModule("shape_2d_localize_conv_1", "input_blob_scaled", "shape_2d_localize_conv_1", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
-    AddConvModule("shape_2d_localize_conv_2", "shape_2d_localize_conv_1", "shape_2d_localize_conv_2", 32, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
-    AddReluOp("shape_2d_localize_conv_2_relu_1", "shape_2d_localize_conv_2", "shape_2d_localize_conv_2", {}, netspace);
-
-    //conv (3x3, 20 channels)
-    //conv (3x3, 20 channels)
-    //Relu
-    AddConvModule("shape_2d_localize_conv_3", "shape_2d_localize_conv_2", "shape_2d_localize_conv_3", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
-    AddConvModule("shape_2d_localize_conv_4", "shape_2d_localize_conv_3", "shape_2d_localize_conv_4", 64, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
-    AddReluOp("shape_2d_localize_conv_4_relu_2", "shape_2d_localize_conv_4", "shape_2d_localize_conv_4", {}, netspace);
-
-    //relu fc 500
-    //relu fc 500
-    //fc 2
-    //softmax
-    AddFullyConnectedModuleWithActivation("shape_2d_localize_fc_1", "shape_2d_localize_conv_4", "shape_2d_localize_fc_1", 512, "Relu", "XavierFill", "ConstantFill", netspace);
-    AddFullyConnectedModuleWithActivation("shape_2d_localize_fc_2", "shape_2d_localize_fc_1", "shape_2d_localize_fc_2", 512, "Relu", "XavierFill", "ConstantFill", netspace);
-    AddFullyConnectedModule("shape_2d_localize_fc_3", "shape_2d_localize_fc_2", "shape_2d_localize_fc_3", 2, "XavierFill", "ConstantFill", netspace);
-
-    //Make loss/loopback for gradient
-    AddSquaredL2DistanceOp("shape_2d_localize_loss_l2_dist", "shape_2d_localize_fc_3", "expected_output_blob", "shape_2d_localize_loss_l2_dist", {"TRAIN", "TEST"}, netspace);
-    AddAveragedLossOp("shape_2d_localize_avg_loss", "shape_2d_localize_loss_l2_dist", "shape_2d_localize_avg_loss", {"TRAIN", "TEST"}, netspace);
-    AddNetworkGradientLoopBack("shape_2d_localize_gradient_loop_back", "shape_2d_localize_avg_loss", {"TRAIN", "TEST"}, netspace);
-
-    //Add gradient ops
-    AddGradientOperators("shape_2d_localize", {"TRAIN", "TEST"}, netspace);
-
-    //Add solver ops -> lower than .001 learning rate n
-    GoodBot::AddAdamSolvers("shape_2d_localize", netspace, .9, .999, 1e-5, -.0001);
-
-    //Initialize network
-    caffe2::NetDef shape_2d_localize_init_def = GoodBot::GetNetwork("shape_2d_localize", "INIT", false, netspace);
-    caffe2::NetBase* shape_2d_localize_init_net = workspace.CreateNet(shape_2d_localize_init_def);
-    shape_2d_localize_init_net->Run();
-
-    //Create training network
-    caffe2::NetDef shape_2d_localize_train_def = GoodBot::GetNetwork("shape_2d_localize", "TRAIN", true, netspace);
-    caffe2::NetBase* shape_2d_localize_train_net = workspace.CreateNet(shape_2d_localize_train_def);
-
-    GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
-
-    int64_t number_of_training_iterations = 30000;
-    for(int64_t iteration = 0; iteration < number_of_training_iterations; iteration++)
-    {
-    //Shuffle data every epoc through
-    if((iteration % training_expected_output.size()) == 0)
-    {
-    PairedRandomShuffle(images, training_expected_output);
-    }
-
-    //Load data into blobs
-    SOM_ASSERT(images[iteration % images.size()].GetSize() == input_blob.nbytes(), "Image size differs from input_blob size (" + std::to_string(images[iteration % images.size()].GetSize()) + " vs " + std::to_string(input_blob.nbytes())) + ")";
-    memcpy(input_blob.mutable_data<int8_t>(), images[iteration % images.size()].GetData(), input_blob.nbytes());
-
-    SOM_ASSERT(sizeof(training_expected_output[iteration % training_expected_output.size()]) == expected_output_blob.nbytes(), "output size mismatch");
-    memcpy(expected_output_blob.mutable_data<float>(), &(training_expected_output[iteration % training_expected_output.size()][0]), expected_output_blob.nbytes());
-
-    //Run network with loaded instance
-    shape_2d_localize_train_net->Run();
-
-    //Get loss exponentially weighted moving average
-    caffe2::TensorCPU& loss = GoodBot::GetMutableTensor("shape_2d_localize_avg_loss", workspace);
-
-    caffe2::TensorCPU& shape_2d_localize_fc_3 = GoodBot::GetMutableTensor("shape_2d_localize_fc_3", workspace);
-
-    moving_average.Update((double) *loss.mutable_data<float>());
-
-    //std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << " " << expected_output_blob.mutable_data<float>()[0] << " " << expected_output_blob.mutable_data<float>()[1]
-    //          << " " << shape_2d_localize_fc_3.mutable_data<float>()[0] << " " << shape_2d_localize_fc_3.mutable_data<float>()[1] << std::endl;
-    }
-    REQUIRE(moving_average.GetAverage() < .01);
+        TestHyperParameter({}, {input_depth});
     }
 }
 
@@ -850,7 +988,7 @@ REQUIRE(file_size == ((input_blob_size+output_blob_size)*numberOfEntries));
 }
 
 //Make a data loader and see if the retrieved blobs are coherent (match input/output rule)
-GoodBot::DataLoader loader(temp_file_name, input_blob_size, output_blob_size, bufferSize, numberOfBuffers, maxRereadsBeforeRefill);
+GoodBot::RandomizedFileDataLoader loader(temp_file_name, input_blob_size, output_blob_size, bufferSize, numberOfBuffers, maxRereadsBeforeRefill);
 
 std::vector<uint64_t> input_buffer(inputSequenceLength*batchSize);
 std::vector<uint64_t> output_buffer(outputSequenceLength*batchSize);
