@@ -27,7 +27,7 @@ add_definitions(-DWITH_GPU)
 #Tell compiler where to find required libraries
 link_directories(/usr/lib/x86_64-linux-gnu/)
 
-include_directories(./src/library/ ./src/executables/unitTests ./src/executables/categoricalVGG ./Catch/single_include ${Caffe2_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS} ${NLOPT_INCLUDE_DIRS})
+include_directories(./src/library/ ./src/executables/unitTests ./src/executables/experimenter ./Catch/single_include ${Caffe2_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS} ${NLOPT_INCLUDE_DIRS})
 
 find_package(Threads)
 
@@ -35,8 +35,6 @@ find_package(Threads)
 FILE(GLOB SOURCEFILES ./src/library/*.cpp ./src/library/*.c)
 
 FILE(GLOB UNIT_TESTS_EXECUTABLE_SOURCE ./src/executables/unitTests/*.cpp ./src/executables/unitTests/*.c)
-
-FILE(GLOB CATEGORICAL_VGG_SOURCE ./src/executables/categoricalVGG/*.cpp ./src/executables/categoricalVGG/*.c)
 
 FILE(GLOB EXPERIMENTER_SOURCE ./src/executables/experimenter/*.cpp ./src/executables/experimenter/*.c)
 
@@ -47,15 +45,11 @@ add_library(commonLibrary SHARED  ${SOURCEFILES})
 #Tell CMake what executables to make
 ADD_EXECUTABLE(unitTests ${UNIT_TESTS_EXECUTABLE_SOURCE}) 
 
-ADD_EXECUTABLE(categoricalVGG ${CATEGORICAL_VGG_SOURCE}) 
-
 ADD_EXECUTABLE(experimenter ${EXPERIMENTER_SOURCE}) 
 
 target_link_libraries(commonLibrary dl sqlite3 ${CMAKE_THREAD_LIBS_INIT} ${CAFFE2_LIB} ${CAFFE2_GPU_LIB} ${PROTOBUF_LIBRARY} glog ${CUDA_LIBRARIES} ${CUDA_CUDART_LIBRARY} ${CUDA_curand_LIBRARY} ${NCCL_LIB} ${NLOPT_LIBRARIES}) 
 
 #link libraries to executable
 target_link_libraries(unitTests commonLibrary)
-
-target_link_libraries(categoricalVGG commonLibrary)
 
 target_link_libraries(experimenter commonLibrary)

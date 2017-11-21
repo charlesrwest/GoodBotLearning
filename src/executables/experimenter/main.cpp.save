@@ -8,8 +8,6 @@
 
 int main(int argc, char **argv)
 {
-    //WIP
-#if 0
     //Make data sources and define image dimensions
     //Define dataset name
 
@@ -18,72 +16,64 @@ int main(int argc, char **argv)
     //Learning rate: [.001, .00001]
 
     //integers:
-    //#Fully connected rectified layers (after conv layers): [0,6]
+    //#Fully connected rectified layers (after second number: 08639993361conv layers): [0,6]
     //# nodes in fully connected layers: [10, 2000]
     //#Convolution models: [0, 6]
     //# filters at base layer: [1, 200]
     //Stride level: [1,4]
 
-    //Produce the training data
-    std::vector<std::array<float, 2>> training_expected_output;
-    std::vector<PseudoImage<char>> images;
-
-    //If we have a depth of more than one, make a copy of the training data with exactly one of the depth layers drawn on for each possible depth.
-    for(int64_t fill_depth_index = 0; fill_depth_index < input_depth; fill_depth_index++)
-    {
-        std::vector<std::array<float, 2>> training_expected_output_buffer;
-        std::vector<PseudoImage<char>> images_buffer;
-
-        std::tie(training_expected_output_buffer, images_buffer) = CreateShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
-
-        training_expected_output.insert(training_expected_output.end(), training_expected_output_buffer.begin(), training_expected_output_buffer.end());
-        images.insert(images.end(), images_buffer.begin(), images_buffer.end());
-    }
-
-    PairedRandomShuffle(images, training_expected_output);
-
-    int64_t number_of_examples = images.size();
-
-    std::cout << "There are " << number_of_examples << " examples with inputs of size " << images[0].GetSize() << " and outputs of size " << sizeof(float)*2 << std::endl;
-
-    std::vector<char> network_inputs, network_training_inputs, network_test_inputs;
-    AddDataToVector(images, network_inputs);
-
-    std::vector<char> expected_network_outputs, expected_network_training_outputs, expected_network_test_outputs;
-    AddDataToVector(training_expected_output, expected_network_outputs);
-
-    double training_fraction = .8;
-
-    std::tie(network_training_inputs, network_test_inputs) = SplitDataSet(training_fraction, network_inputs.size() / number_of_examples, network_inputs);
-
-    std::tie(expected_network_training_outputs, expected_network_test_outputs) = SplitDataSet(training_fraction, expected_network_outputs.size() / number_of_examples, expected_network_outputs);
-
-    int64_t number_of_training_examples = number_of_examples*training_fraction;
-    int64_t number_of_test_examples = number_of_examples - number_of_training_examples;
-
-    GoodBot::MemoryDataLoader training_data_source(number_of_training_examples, network_training_inputs, expected_network_training_outputs);
-    GoodBot::MemoryDataLoader test_data_source(number_of_test_examples, network_test_inputs, expected_network_test_outputs);
-
-    std::cout << "There are " << training_data_source.GetNumberOfExamples() << " training examples" << std::endl;
-    std::cout << "There are " << test_data_source.GetNumberOfExamples() << " test examples" << std::endl;
-
     //~ 78,008,000 combinations + infinity with learning rate
     std::function<double(const std::vector<double>&, const std::vector<int64_t>&)> TestHyperParameter =
-            [&training_data_source, &test_data_source](const std::vector<double>& doubleParameters, const std::vector<int64_t>& integerParameters)
+            [](const std::vector<double>& doubleParameters, const std::vector<int64_t>& integerParameters)
     {
-        //We expect one integer parameter which indicates the image depth to use
+        //We expect one integer parameter which indicates the image depth6 to use
         SOM_ASSERT(integerParameters.size() == 5, "Expected single integer parameter");
         SOM_ASSERT(doubleParameters.size() == 1, "Expected no double parameters");
 
-        //doubles:
-        double learning_rate = doubleParameters[0];
-    
-        //integers:
-        int64_t number_of_relu_layers = integerParameters[0];
-        int64_t nodes_per_relu_layer = integerParameters[1];
-        int64_t number_of_convolutional_modules = integerParameters[2];
-        int64_t number_of_filters_at_base_layer = integerParameters[3];
-        int64_t stride_level = integerParameters[4];
+        int64_t input_depth = integerParameters[0];
+
+        //Produce the training data
+        std::vector<std::array<float, 2>> training_expected_output;
+        std::vector<PseudoImage<char>> images;
+
+        //If we have a depth of more than one, make a copy of the training data with exactly one of the depth layers drawn on for each possible depth.
+        for(int64_t fill_depth_index = 0; fill_depth_index < input_depth; fill_depth_index++)
+        {
+            std::vector<std::array<float, 2>> training_expected_output_buffer;
+            std::vector<PseudoImage<char>> images_buffer;
+
+            std::tie(training_expected_output_buffer, images_buffer) = CreateShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
+
+            training_expected_output.insert(training_expected_output.end(), training_expected_output_buffer.begin(), training_expected_output_buffer.end());
+            images.insert(images.end(), images_buffer.begin(), images_buffer.end());
+        }
+
+        PairedRandomShuffle(images, training_expected_output);
+
+        int64_t number_of_examples = images.size();
+
+        std::cout << "There are " << number_of_examples << " examples with inputs of size " << images[0].GetSize() << " and outputs of size " << sizeof(float)*2 << std::endl;
+
+        std::vector<char> network_inputs, network_training_inputs, network_test_inputs;
+        AddDataToVector(images, network_inputs);
+
+        std::vector<char> expected_network_outputs, expected_network_training_outputs, expected_network_test_outputs;
+        AddDataToVector(training_expected_output, expected_network_outputs);
+
+        double training_fraction = .8;
+
+        std::tie(network_training_inputs, network_test_inputs) = SplitDataSet(training_fraction, network_inputs.size() / number_of_examples, network_inputs);
+
+        std::tie(expected_network_training_outputs, expected_network_test_outputs) = SplitDataSet(training_fraction, expected_network_outputs.size() / number_of_examples, expected_network_outputs);
+
+        int64_t number_of_training_examples = number_of_examples*training_fraction;
+        int64_t number_of_test_examples = number_of_examples - number_of_training_examples;
+
+        GoodBot::MemoryDataLoader training_data_source(number_of_training_examples, network_training_inputs, expected_network_training_outputs);
+        GoodBot::MemoryDataLoader test_data_source(number_of_test_examples, network_test_inputs, expected_network_test_outputs);
+
+        std::cout << "There are " << training_data_source.GetNumberOfExamples() << " training examples" << std::endl;
+        std::cout << "There are " << test_data_source.GetNumberOfExamples() << " test examples" << std::endl;
 
         //Create the Caffe2 workspace/context
         caffe2::DeviceOption option;
@@ -109,7 +99,6 @@ int main(int argc, char **argv)
         //Make the training network
         GoodBot::AddCastOp("shape_2d_localize_cast", "input_blob_gpu", "INT8", "input_blob_casted", "FLOAT", {}, netspace);
         AddScaleOp("shape_2d_localize_scale", "input_blob_casted", "input_blob_scaled", (1.0/128.0), {}, netspace);
-
 
         //conv (3x3, 20 channels)
         //conv (3x3, 20 channels)
@@ -234,7 +223,7 @@ int main(int argc, char **argv)
     {
         TestHyperParameter({}, {input_depth});
     }
-#endif
+
 
 return 0;
 }

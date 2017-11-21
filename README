@@ -1,0 +1,13 @@
+Hello!
+
+This library is a personal project which is meant to make it easier to create networks using Caffe2 in C++ (which is fairly well supported in Python, but not so much in C++).  There are currently a few rough edges and some documentation that needs to be written but I would be happy to clean it up if there is interest.
+
+Modern Deep Learning Architectures are fairly complex and it is impractical to manually specify every piece of every layer (1000+ layers in some Resnet variants).  This library makes it possible to automate much of the nitty gritty construction details by automatically determining the size of different blobs in the network and then constructing modules that refer to them appropriately.
+
+In an ideal case, this could be done by defining the operator that creates a given blob and Caffe2 giving the associated size.  In practice, however, blobs aren't created until the network is run (error reporting could also use some work).  This library gets around that problem by defining a "Netspace" which has all of the to be constructed operator definitions and recursively resolves the size of any given blob.  That in turn allows the entire network architecture to be defined in a flexible manner (connect this fully connected operate to that blob).  The library also helps with the automatic construction of solver operators and specifying which versions of the network a operator should be active.
+
+For several examples of this library in action, take a look at src/executables/unitTests/main.cpp
+
+Thanks!
+
+Charlie West
