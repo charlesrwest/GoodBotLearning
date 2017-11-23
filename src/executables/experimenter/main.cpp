@@ -296,7 +296,7 @@ int main(int argc, char **argv)
     constraints.IntegerConstraints.emplace_back(0,6);
     constraints.IntegerConstraints.emplace_back(10, 1000);
     constraints.IntegerConstraints.emplace_back(0,6);
-    constraints.IntegerConstraints.emplace_back(1,50);
+    constraints.IntegerConstraints.emplace_back(1,30);
     constraints.IntegerConstraints.emplace_back(1,4);
 
     constraints.DoubleConstraints.emplace_back(0.00001, .001);
