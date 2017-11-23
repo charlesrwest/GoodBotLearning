@@ -255,28 +255,30 @@ std::pair<std::vector<int32_t>, std::vector<PseudoImage<ValueType>>> CreateShape
 }
 
 template<typename ValueType>
-std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>> CreateShape2DLocalizationImageTrainingData(ValueType defaultValue, ValueType shapeFillValue, int64_t imageDepth, const std::vector<int64_t>& depthsToShapeFill)
+std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>> CreateShape2DLocalizationImageTrainingData(ValueType defaultValue, ValueType shapeFillValue, int64_t imageDepth, int64_t imageDimension, const std::vector<int64_t>& depthsToShapeFill)
 {
     std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>> result;
     std::vector<std::array<float, 2>>& labels = result.first;
     std::vector<PseudoImage<ValueType>>& images = result.second;
-    int64_t image_dimension = 20;
+    int64_t square_outer_dimension = 10;
+    int64_t square_inner_dimension = 8;
+    int64_t wiggle_amount = (imageDimension - (square_outer_dimension+1)) / 2;
 
-    for(int64_t x_offset = -3; x_offset <= 3; x_offset++ )
+    for(int64_t x_offset = -wiggle_amount; x_offset <= wiggle_amount; x_offset++ )
     {
-        for(int64_t y_offset = -3; y_offset <= 3; y_offset++ )
+        for(int64_t y_offset = -wiggle_amount; y_offset <= wiggle_amount; y_offset++ )
         {
             //Add square example
-            images.emplace_back(image_dimension, image_dimension, imageDepth);
+            images.emplace_back(imageDimension, imageDimension, imageDepth);
             PseudoImage<ValueType>& square_image = images.back();
             Fill<ValueType>(defaultValue, square_image);
-            int64_t center_x = 10+x_offset;
-            int64_t center_y = 10+y_offset;
-            DrawSquare<ValueType>(center_x, center_y, 8, 10, shapeFillValue, depthsToShapeFill, square_image);
+            int64_t center_x = (imageDimension/2+x_offset+.5);
+            int64_t center_y = (imageDimension/2+y_offset+.5);
+            DrawSquare<ValueType>(center_x, center_y, square_inner_dimension, square_outer_dimension, shapeFillValue, depthsToShapeFill, square_image);
 
             //Move to approximately +-1.0
-            float normalized_center_x = ((center_x)/((double) 2*image_dimension)) - 1;
-            float normalized_center_y = ((center_y)/((double) 2*image_dimension)) - 1;
+            float normalized_center_x = 2.0*((center_x-(imageDimension/2.0))/(2.0*wiggle_amount));
+            float normalized_center_y = 2.0*((center_y-(imageDimension/2.0))/(2.0*wiggle_amount));
 
             //Store center of square after normalization
             labels.emplace_back(std::array<float, 2>{normalized_center_x, normalized_center_y});

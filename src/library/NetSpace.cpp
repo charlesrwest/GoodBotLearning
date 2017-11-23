@@ -276,7 +276,7 @@ std::vector<int64_t> GoodBot::GetConvOperatorOutputSize(const NetOp& op, const N
 
     //Batch size, depth, height width
     int64_t kernel_loss = kernel == 2 ? 0 : ((kernel/2)*2);
-    return {input_shape[0], output_depth, (input_shape[2]/stride)+2*pad-kernel_loss, (input_shape[3]/stride)+2*pad-kernel_loss};
+    return {input_shape[0], output_depth, (input_shape[2]/stride+((input_shape[2] % stride) > 0))+2*pad-kernel_loss, (input_shape[3]/stride + ((input_shape[3] % stride) > 0))+2*pad-kernel_loss};
 }
 
 std::vector<int64_t> GoodBot::GetMaxPoolOperatorOutputSize(const NetOp& op, const NetSpace& netSpace)
@@ -309,3 +309,4 @@ std::vector<int64_t> GoodBot::GetMaxPoolOperatorOutputSize(const NetOp& op, cons
     int64_t kernel_loss = kernel == 2 ? 0 : ((kernel/2)*2);
     return {input_shape[0], input_shape[1], (input_shape[2]/stride)+2*pad-kernel_loss, (input_shape[3]/stride)+2*pad-kernel_loss};
 }
+

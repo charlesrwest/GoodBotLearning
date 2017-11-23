@@ -175,7 +175,7 @@ TEST_CASE("Simple localization conv network", "[Example]")
             std::vector<std::array<float, 2>> training_expected_output_buffer;
             std::vector<PseudoImage<char>> images_buffer;
 
-            std::tie(training_expected_output_buffer, images_buffer) = CreateShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, {fill_depth_index});
+            std::tie(training_expected_output_buffer, images_buffer) = CreateShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, 20, {fill_depth_index});
 
             training_expected_output.insert(training_expected_output.end(), training_expected_output_buffer.begin(), training_expected_output_buffer.end());
             images.insert(images.end(), images_buffer.begin(), images_buffer.end());

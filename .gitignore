@@ -15,3 +15,4 @@ Doxyfile
 build/*
 data/*
 build-release/*
+*.db

@@ -1,9 +1,0 @@
-
-
-class DataS
-
-class Investigator
-{
-
-
-};
