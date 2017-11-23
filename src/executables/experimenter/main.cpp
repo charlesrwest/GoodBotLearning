@@ -294,7 +294,7 @@ int main(int argc, char **argv)
 
     GoodBot::InvestigatorRunConstraints constraints;
     constraints.IntegerConstraints.emplace_back(0,6);
-    constraints.IntegerConstraints.emplace_back(10, 2000);
+    constraints.IntegerConstraints.emplace_back(10, 1000);
     constraints.IntegerConstraints.emplace_back(0,6);
     constraints.IntegerConstraints.emplace_back(1,50);
     constraints.IntegerConstraints.emplace_back(1,4);
