@@ -242,6 +242,7 @@ void SampleInSpace(OptimizationSpace& region, std::function<double(const std::ve
     catch(const std::exception& exception)
     {
         std::cout << "Got an exception, supressing" << std::endl;
+        region.AddSample(OptimizationEntry(integer_parameters, real_parameters, 1e15)); //Add large value to suppress sampling, but don't log to database.
     }
 }
 
