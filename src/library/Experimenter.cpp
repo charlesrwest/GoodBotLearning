@@ -2,6 +2,7 @@
 #include<random>
 #include<chrono>
 #include<set>
+#include<iostream>
 
 using namespace GoodBot;
 
@@ -74,6 +75,8 @@ double Investigator::Optimize()
     double smallest_value = std::numeric_limits<double>::max();
     while((GetCurrentTime() - start_time) < Constraints.MaxRunTimeMilliSeconds)
     {
+        try
+        {
         //Generate and try random parameters
         std::vector<int64_t> integer_parameters = GenerateIntegerArguments();
         std::vector<double> double_parameters = GenerateDoubleArguments();
@@ -89,6 +92,11 @@ double Investigator::Optimize()
         double value = Objective(double_parameters, integer_parameters);
         hashes.insert(hash);
         smallest_value = std::min(value, smallest_value);
+        }
+        catch(const std::exception& exception)
+        {
+            std::cout << "Got an exception, supressing" << std::endl;
+        }
     }
 
     return smallest_value;

@@ -24,6 +24,99 @@
 #include "ExperimentLogger.hpp"
 #include "SQLite3Wrapper.hpp"
 #include "SOMScopeGuard.hpp"
+#include "Optimizer.hpp"
+
+
+TEST_CASE("Test non-linear optimization with 1D doubles")
+{
+    std::function<double(const std::vector<double>&, const std::vector<int64_t>&)> objective_function = [](const std::vector<double>& doubleParameters, const std::vector<int64_t>&)
+    {
+        return pow((doubleParameters[0]-1), 2.0); //Parabola with zero at 1
+    };
+
+    for(int64_t optimizer_test = 0; optimizer_test < 1000; optimizer_test++)
+    {
+        GoodBot::Optimizer opt(objective_function, {}, {{-10.0, 10.0}}, {}, 20, .5);
+
+        for(int64_t step = 0; step < 100000; step++)
+        {
+            opt.StepSearch();
+            std::tuple<double, std::vector<int64_t>, std::vector<double>> result = opt.GetBestParameters();
+            if(std::get<0>(result) == 0)
+            {
+                //Got best possible value, so stop searching
+                break;
+            }
+            //std::cout << "Min " << std::get<0>(result) << std::endl;
+        }
+
+        std::tuple<double, std::vector<int64_t>, std::vector<double>> result = opt.GetBestParameters();
+        //std::cout << "Min " << std::get<0>(result) << std::endl;
+        REQUIRE(std::get<0>(result) >= 0.0);
+        REQUIRE(std::get<0>(result) < .1);
+    }
+
+}
+
+TEST_CASE("Test non-linear optimization with 1D integer")
+{
+    std::function<double(const std::vector<double>&, const std::vector<int64_t>&)> objective_function = [](const std::vector<double>& doubleParameters, const std::vector<int64_t>& integerParameters)
+    {
+        return pow((integerParameters[0]-1), 2.0); //Parabola with zero at 1
+    };
+
+    for(int64_t optimizer_test = 0; optimizer_test < 1000; optimizer_test++)
+    {
+    GoodBot::Optimizer opt(objective_function, {{-1000, 1000}}, {}, {}, 20, .5);
+
+    for(int64_t step = 0; step < 100000; step++)
+    {
+        opt.StepSearch();
+        std::tuple<double, std::vector<int64_t>, std::vector<double>> result = opt.GetBestParameters();
+        //std::cout << "Min " << std::get<0>(result) << std::endl;std::cout << "Min " << std::get<0>(result) << std::endl;
+        if(std::get<0>(result) == 0)
+        {
+            //Got best possible value, so stop searching
+            break;
+        }
+    }
+
+    std::tuple<double, std::vector<int64_t>, std::vector<double>> result = opt.GetBestParameters();
+    //std::cout << "Min " << std::get<0>(result) << std::endl;
+    REQUIRE(std::get<0>(result) >= 0.0);
+    REQUIRE(std::get<0>(result) == 0.0);
+    }
+}
+
+TEST_CASE("Test non-linear optimization with 2D integer/double")
+{
+    std::function<double(const std::vector<double>&, const std::vector<int64_t>&)> objective_function = [](const std::vector<double>& doubleParameters, const std::vector<int64_t>& integerParameters)
+    {
+        return pow((integerParameters[0]-1), 2.0) + pow((doubleParameters[0]-1), 2.0); //Parabola with zero at 1
+    };
+
+    for(int64_t optimizer_test = 0; optimizer_test < 1000; optimizer_test++)
+    {
+        GoodBot::Optimizer opt(objective_function, {{-1000, 1000}}, {{-10.0, 10.0}}, {}, 40, .3);
+
+    for(int64_t step = 0; step < 100000; step++)
+    {
+        opt.StepSearch();
+        std::tuple<double, std::vector<int64_t>, std::vector<double>> result = opt.GetBestParameters();
+        //std::cout << "Min " << std::get<0>(result) << std::endl;std::cout << "Min " << std::get<0>(result) << std::endl;
+        if(std::get<0>(result) == 0)
+        {
+            //Got best possible value, so stop searching
+            break;
+        }
+    }
+
+    std::tuple<double, std::vector<int64_t>, std::vector<double>> result = opt.GetBestParameters();
+    std::cout << "Min " << std::get<0>(result) << std::endl;
+    REQUIRE(std::get<0>(result) >= 0.0);
+    REQUIRE(std::get<0>(result) < 0.1);
+    }
+}
 
 TEST_CASE("Test experiment logger", "Logger")
 {
@@ -100,29 +193,6 @@ TEST_CASE("Test experiment logger", "Logger")
         {
             REQUIRE(retrieved_entries[entry_index] == test_entries[entry_index]);
         }
-    }
-}
-
-TEST_CASE("Test non-linear optimization with/without gradient", "[Example]")
-{
-    for(auto optimization_mode : {nlopt::LD_MMA, nlopt::LN_COBYLA})
-    {
-        nlopt::opt optimizer(optimization_mode, 2);
-        std::vector<double> lower_bounds{-HUGE_VAL, 0.0};
-        optimizer.set_lower_bounds(lower_bounds);
-        optimizer.set_min_objective(SimpleTestObjectiveFunction, nullptr);
-        std::array<SimpleTestConstraintData, 2> constraint_data = {SimpleTestConstraintData{2, 0}, SimpleTestConstraintData{-1, 1}};
-        optimizer.add_inequality_constraint(SimpleTestVConstraint, &constraint_data[0], 1e-8);
-        optimizer.add_inequality_constraint(SimpleTestVConstraint, &constraint_data[1], 1e-8);
-        optimizer.set_xtol_rel(1e-4);
-        std::vector<double> input{1.234, 5.678};
-        double min_output = std::numeric_limits<double>::max();
-        nlopt::result result = optimizer.optimize(input, min_output);
-
-        REQUIRE(fabs(.333333 - input[0]) < .001);
-        REQUIRE(fabs(0.296296 - input[1]) < .001);
-        REQUIRE(fabs(0.544331 - min_output) < .001);
-        std::cout << "Optimizer final values: Input (" << input[0] << ", " << input[1] << ") Output " << min_output << std::endl;
     }
 }
 

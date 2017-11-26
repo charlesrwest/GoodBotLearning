@@ -6,7 +6,8 @@
 #include "ExperimentLogger.hpp"
 #include "caffe2/core/context_gpu.h"
 #include<chrono>
-#include "Experimenter.hpp"
+//#include "Experimenter.hpp"
+#include "Optimizer.hpp"
 
 int main(int argc, char **argv)
 {
@@ -80,6 +81,18 @@ int main(int argc, char **argv)
         int64_t number_of_convolutional_modules = integerParameters[2];
         int64_t number_of_filters_at_base_layer = integerParameters[3];
         int64_t stride_level = integerParameters[4];
+
+        std::cout << "Parameters: " ;
+        for(double value : doubleParameters)
+        {
+            std::cout << " " << std::to_string(value);
+        }
+
+        for(int64_t value : integerParameters)
+        {
+            std::cout << " " << std::to_string(value);
+        }
+        std::cout << std::endl;
 
         //void AddEntry(const LogEntry& entry);
         GoodBot::LogEntry entry;
@@ -250,7 +263,7 @@ int main(int argc, char **argv)
 
             final_test_loss = average_test_loss;
             best_test_loss = std::min(average_test_loss, best_test_loss);
-            std::cout << "Average test loss: " << average_test_loss << std::endl;
+            //std::cout << "Average test loss: " << average_test_loss << std::endl;
 
             train_epoc_index++;
         }
@@ -278,8 +291,16 @@ int main(int argc, char **argv)
         return best_test_loss;
     };
 
-
-    //TestHyperParameter({.00019542143346}, {3, 1092, 1, 37, 3});
+    /*
+    try
+    {
+        TestHyperParameter({.00019542143346}, {3, 10000, 1, 200, 3});
+    }
+    catch(const std::exception& exception)
+    {
+        std::cout << "Got an exception, supressing" << std::endl;
+    }
+    */
 
     //Pass in parameters:
     //doubles:
@@ -292,20 +313,22 @@ int main(int argc, char **argv)
     //# filters at base layer: [1, 200]
     //Stride level: [1,4]
 
-    GoodBot::InvestigatorRunConstraints constraints;
-    constraints.IntegerConstraints.emplace_back(0,6);
-    constraints.IntegerConstraints.emplace_back(10, 1000);
-    constraints.IntegerConstraints.emplace_back(0,6);
-    constraints.IntegerConstraints.emplace_back(1,30);
-    constraints.IntegerConstraints.emplace_back(1,4);
+    std::vector<GoodBot::IntegerRange> integer_ranges;
+    std::vector<GoodBot::DoubleRange> double_ranges;
+    integer_ranges.emplace_back(0,6);
+    integer_ranges.emplace_back(10, 1000);
+    integer_ranges.emplace_back(0,6);
+    integer_ranges.emplace_back(1,30);
+    integer_ranges.emplace_back(1,4);
 
-    constraints.DoubleConstraints.emplace_back(0.00001, .001);
+    double_ranges.emplace_back(0.00001, .001);
 
-    constraints.MaxRunTimeMilliSeconds = 1000*60*60*24*7; //Go for about a week
+    int64_t MaxRunTimeMilliSeconds = 1000*60*60*24*7; //Go for about a week
 
-    GoodBot::Investigator experimenter(constraints, TestHyperParameter);
+    GoodBot::Optimizer experimenter(TestHyperParameter, integer_ranges, double_ranges,
+    {}, 100, .5);
 
-    experimenter.Optimize();
+    experimenter.Search(MaxRunTimeMilliSeconds);
 
-return 0;
+    return 0;
 }
