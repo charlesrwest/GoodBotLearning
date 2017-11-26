@@ -230,11 +230,11 @@ std::vector<DataType> Sample(const std::vector<ValueRange<DataType>>& ranges, Ra
 template<class RandomnessGenerator>
 void SampleInSpace(OptimizationSpace& region, std::function<double(const std::vector<double>&, const std::vector<int64_t>&)>& objective, RandomnessGenerator& randomness)
 {
+    std::vector<double> real_parameters = Sample(region.GetDoubleRanges(), randomness);
+    std::vector<int64_t> integer_parameters = Sample(region.GetIntegerRanges(), randomness);
+
     try
     {
-        std::vector<double> real_parameters = Sample(region.GetDoubleRanges(), randomness);
-        std::vector<int64_t> integer_parameters = Sample(region.GetIntegerRanges(), randomness);
-
         double value = objective(real_parameters, integer_parameters);
 
         region.AddSample(OptimizationEntry(integer_parameters, real_parameters, value));
