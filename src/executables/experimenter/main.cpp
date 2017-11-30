@@ -120,7 +120,7 @@ int main(int argc, char **argv)
         /** Create inputs/outputs */
 
         //Batch size, channel depth, width/height
-        GoodBot::AddConstantFillOp("shape_2d_localize_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, input_depth, 20, 20}, {"INIT"}, false, caffe2::CPU, netspace);
+        GoodBot::AddConstantFillOp("shape_2d_localize_input", "input_blob", 0,  caffe2::TensorProto::INT8, {1, input_depth, image_dimension, image_dimension}, {"INIT"}, false, caffe2::CPU, netspace);
 
         //Batch size, expected category
         GoodBot::AddConstantFillOp("shape_2d_localize_expected_output", "expected_output_blob", 0.0f,  caffe2::TensorProto::FLOAT, {1, 2}, {"INIT"}, false, caffe2::CPU, netspace);
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
         shape_2d_localize_init_net->Run();
 
         SOM_ASSERT(BlobNamesFound({"input_blob", "expected_output_blob"}, workspace), "Missing blob names");
-        SOM_ASSERT(BlobShapeMatches("input_blob", {1, input_depth, 20, 20}, workspace), "Incorrect input shape");
+        SOM_ASSERT(BlobShapeMatches("input_blob", {1, input_depth, image_dimension, image_dimension}, workspace), "Incorrect input shape");
         SOM_ASSERT(BlobShapeMatches("expected_output_blob", {1, 2}, workspace), "Incorrect output shape");
 
         caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
@@ -209,10 +209,10 @@ int main(int argc, char **argv)
         shape_2d_localize_test_def.mutable_device_option()->set_device_type(caffe2::CUDA); //Set type to CUDA for all ops which have not directly forced CPU
         caffe2::NetBase* shape_2d_localize_test_net = workspace.CreateNet(shape_2d_localize_test_def);
 
-        GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
+        GoodBot::ExponentialMovingAverage moving_average(1.0 / (10000));
 
         int64_t train_epoc_index = 0;
-        int64_t number_of_training_epocs = 100;
+        int64_t number_of_training_epocs = 200;
         double best_test_loss = std::numeric_limits<double>::max();
         double final_test_loss = std::numeric_limits<double>::max();
         std::array<double, 2> xDims{std::numeric_limits<double>::max(),std::numeric_limits<double>::min()};
@@ -240,7 +240,7 @@ int main(int argc, char **argv)
         yDims[1] = std::max<double>(yDims[1], expected_output_blob.mutable_data<float>()[1]);
 
         //std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << " " << expected_output_blob.mutable_data<float>()[0] << " " << expected_output_blob.mutable_data<float>()[1]
-        //          << " " << shape_2d_localize_fc_output_cpu.mutable_data<float>()[0] << " " << shape_2d_localize_fc_output_cpu.mutable_data<float>()[1] << " " << train_epoc_index << std::endl;
+        //           << " " << shape_2d_localize_fc_output_cpu.mutable_data<float>()[0] << " " << shape_2d_localize_fc_output_cpu.mutable_data<float>()[1] << " " << train_epoc_index << std::endl;
 
         if(last_example_in_train_epoc)
         {
@@ -263,7 +263,6 @@ int main(int argc, char **argv)
 
             final_test_loss = average_test_loss;
             best_test_loss = std::min(average_test_loss, best_test_loss);
-            //std::cout << "Average test loss: " << average_test_loss << std::endl;
 
             train_epoc_index++;
         }
@@ -285,22 +284,25 @@ int main(int argc, char **argv)
         //TODO: Make associated netspace functions
         entry.HashOfNetspace = "";
         entry.NetspaceSummary = "";
+        entry.DoubleHyperParameters["TrainingLossMovingAverage"] = {moving_average.GetAverage()};
 
         logger.AddEntry(entry);
+        std::cout << "best test loss: " << best_test_loss << std::endl;
+        std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << std::endl;
 
         return best_test_loss;
     };
 
-    /*
+
     try
     {
-        TestHyperParameter({.00019542143346}, {3, 10000, 1, 200, 3});
+        //TestHyperParameter({.0001}, {0, 660, 3, 3, 2});
     }
     catch(const std::exception& exception)
     {
-        std::cout << "Got an exception, supressing" << std::endl;
+        std::cout << "Got an exception (" << exception.what() <<  "), supressing" << std::endl;
     }
-    */
+
 
     //Pass in parameters:
     //doubles:
@@ -315,13 +317,13 @@ int main(int argc, char **argv)
 
     std::vector<GoodBot::IntegerRange> integer_ranges;
     std::vector<GoodBot::DoubleRange> double_ranges;
-    integer_ranges.emplace_back(0,6);
-    integer_ranges.emplace_back(10, 1000);
-    integer_ranges.emplace_back(0,6);
+    integer_ranges.emplace_back(0, 4);
+    integer_ranges.emplace_back(0, 1000);
+    integer_ranges.emplace_back(0,4);
     integer_ranges.emplace_back(1,30);
-    integer_ranges.emplace_back(1,4);
+    integer_ranges.emplace_back(1,3);
 
-    double_ranges.emplace_back(0.00001, .001);
+    double_ranges.emplace_back(0.0002, .00005);
 
     int64_t MaxRunTimeMilliSeconds = 1000*60*60*24*7; //Go for about a week
 
