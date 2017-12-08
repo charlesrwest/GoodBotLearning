@@ -180,7 +180,7 @@ int main(int argc, char **argv)
         shape_2d_localize_test_def.mutable_device_option()->set_device_type(caffe2::CUDA); //Set type to CUDA for all ops which have not directly forced CPU
         caffe2::NetBase* shape_2d_localize_test_net = workspace.CreateNet(shape_2d_localize_test_def);
 
-        print(shape_2d_localize_test_def);
+        //print(shape_2d_localize_test_def);
 
         GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
 
@@ -222,7 +222,7 @@ int main(int argc, char **argv)
             //std::cout << "Expected/Received output: (" << expected_output_blob.mutable_data<float>()[batch_index*2] << ", " << expected_output_blob.mutable_data<float>()[batch_index*2 + 1] << ") (" << shape_2d_localize_fc_output_cpu.mutable_data<float>()[batch_index*2] << ", " << shape_2d_localize_fc_output_cpu.mutable_data<float>()[batch_index*2 + 1] << ")" << std::endl;
         }
 
-        if((iteration % (test_epoc_example_count*5*batch_size)) == 0)
+        if((iteration % (test_epoc_example_count*5)) == 0)
         {
             //Get the average test error
             bool last_example_in_test_epoc = false;
@@ -250,8 +250,8 @@ int main(int argc, char **argv)
             }
             average_test_loss = average_test_loss / test_epoc_example_count;
 
-            //std::cout << "test loss: " << average_test_loss << std::endl;
-            //        std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << std::endl;
+            std::cout << "test loss (" << train_epoc_index << "): " << average_test_loss << std::endl;
+                    std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << std::endl;
             final_test_loss = average_test_loss;
             best_test_loss = std::min(average_test_loss, best_test_loss);
 
