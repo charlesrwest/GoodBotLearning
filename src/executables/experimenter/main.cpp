@@ -69,7 +69,7 @@ int main(int argc, char **argv)
         GoodBot::LogEntry entry;
         entry.ExperimentGroupName = "SquareLocalization";
         entry.DataSetName = "SquareLocalization_" + std::to_string(image_dimension);
-        entry.InvestigationMethod = "Random";
+        entry.InvestigationMethod = "CRWSplittingNLO";
         entry.DoubleHyperParameters["LearningRate"] = {learning_rate};
         entry.IntegerHyperParameters["NumberOfReluLayers"] = {number_of_relu_layers};
         entry.IntegerHyperParameters["NodesPerReluLayer"] = {nodes_per_relu_layer};
