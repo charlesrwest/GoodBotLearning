@@ -17,11 +17,14 @@ caffe2::Workspace& GetWorkspace() const;
 void AddNetOp(const NetOp& netOp);
 bool HasNetOp(const std::string& netOpName) const;
 const NetOp& GetNetOp(const std::string& netOpName) const;
+int64_t GetNetOpOrder(const std::string& netOpName) const;
 const std::map<std::string, NetOp>& GetNetOps() const;
 
 private:
 caffe2::Workspace* Workspace;
 std::map<std::string, NetOp> NetOps;
+std::map<std::string, int64_t> AdditionOrder; //Each NetOp has an associated order one higher than the last
+int64_t NextAdditionOrder;
 };
 
 /**

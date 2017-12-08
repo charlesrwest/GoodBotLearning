@@ -25,6 +25,34 @@
 #include "SQLite3Wrapper.hpp"
 #include "SOMScopeGuard.hpp"
 #include "Optimizer.hpp"
+#include "UtilityFunctions.hpp"
+
+TEST_CASE("Test training data file creation, splitting and reading")
+{
+    char base_character = 'A';
+
+    int64_t input_blob_size = 10;
+    int64_t output_blob_size = 5;
+    int64_t batch_size = 2;
+
+    //Make training data file
+    {
+    std::ofstream output_file("AlphabetTrainingData.blobber", std::ofstream::binary);
+    for(int64_t letter_index = 0; letter_index < (26/2); letter_index++)
+    {
+        std::vector<char> input_blob(input_blob_size, base_character+letter_index*2);
+        std::vector<char> output_blob(output_blob_size, base_character+letter_index*2+1);
+
+        output_file.write(input_blob.data(), input_blob.size());
+        output_file.write(output_blob.data(), output_blob.size());
+    }
+    }
+
+    //Split the training data into 2 files (train, test)
+    GoodBot::SplitBlobberFile(.8,  input_blob_size + output_blob_size, batch_size,
+                          "AlphabetTrainingData.blobber", "AlphabetTrainingDataTrain.blobber", "AlphabetTrainingDataTest.blobber");
+
+}
 
 
 TEST_CASE("Test non-linear optimization with 1D doubles")

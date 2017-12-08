@@ -9,6 +9,7 @@
 #include "NetOp.hpp"
 #include "NetSpace.hpp"
 #include "NetConstruction.hpp"
+#include<functional>
 
 const double PI = 3.141592653589793238463;
 const float  PI_F = 3.14159265358979f;
@@ -255,11 +256,8 @@ std::pair<std::vector<int32_t>, std::vector<PseudoImage<ValueType>>> CreateShape
 }
 
 template<typename ValueType>
-std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>> CreateShape2DLocalizationImageTrainingData(ValueType defaultValue, ValueType shapeFillValue, int64_t imageDepth, int64_t imageDimension, const std::vector<int64_t>& depthsToShapeFill)
+void CreateShape2DLocalizationImageTrainingData(ValueType defaultValue, ValueType shapeFillValue, int64_t imageDepth, int64_t imageDimension, const std::vector<int64_t>& depthsToShapeFill, std::function<void(const PseudoImage<ValueType>&, const std::array<float, 2>&)>& collectorFunction)
 {
-    std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>> result;
-    std::vector<std::array<float, 2>>& labels = result.first;
-    std::vector<PseudoImage<ValueType>>& images = result.second;
     int64_t square_outer_dimension = 10;
     int64_t square_inner_dimension = 8;
     int64_t wiggle_amount = (imageDimension - (square_outer_dimension+1)) / 2;
@@ -269,8 +267,7 @@ std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>
         for(int64_t y_offset = -wiggle_amount; y_offset <= wiggle_amount; y_offset++ )
         {
             //Add square example
-            images.emplace_back(imageDimension, imageDimension, imageDepth);
-            PseudoImage<ValueType>& square_image = images.back();
+            PseudoImage<ValueType> square_image(imageDimension, imageDimension, imageDepth);
             Fill<ValueType>(defaultValue, square_image);
             int64_t center_x = (imageDimension/2+x_offset+.5);
             int64_t center_y = (imageDimension/2+y_offset+.5);
@@ -281,11 +278,43 @@ std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>
             float normalized_center_y = 2.0*((center_y-(imageDimension/2.0))/(2.0*wiggle_amount));
 
             //Store center of square after normalization
-            labels.emplace_back(std::array<float, 2>{normalized_center_x, normalized_center_y});
+            std::array<float, 2> label{normalized_center_x, normalized_center_y};
+
+            collectorFunction(square_image, label);
         }
     }
+}
+
+template<typename ValueType>
+std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>> CreateShape2DLocalizationImageTrainingData(ValueType defaultValue, ValueType shapeFillValue, int64_t imageDepth, int64_t imageDimension, const std::vector<int64_t>& depthsToShapeFill)
+{
+    std::pair<std::vector<std::array<float, 2>>, std::vector<PseudoImage<ValueType>>> result;
+    std::vector<std::array<float, 2>>& labels = result.first;
+    std::vector<PseudoImage<ValueType>>& images = result.second;
+
+    std::function<void(const PseudoImage<ValueType>&, const std::array<float, 2>&)> collector_function = [&](const PseudoImage<ValueType>& image, const std::array<float, 2>& label)
+    {
+        labels.emplace_back(label);
+        images.emplace_back(image);
+    };
+
+    CreateShape2DLocalizationImageTrainingData<ValueType>(defaultValue, shapeFillValue, imageDepth, imageDimension, depthsToShapeFill, collector_function);
 
     return result;
+}
+
+template<typename ValueType>
+void CreateAndSaveShape2DLocalizationImageTrainingData(ValueType defaultValue, ValueType shapeFillValue, int64_t imageDepth, int64_t imageDimension, const std::vector<int64_t>& depthsToShapeFill, const std::string& outputFilePath)
+{
+    std::ofstream file(outputFilePath, std::ifstream::binary);
+
+    std::function<void(const PseudoImage<ValueType>&, const std::array<float, 2>&)> collector_function = [&](const PseudoImage<ValueType>& image, const std::array<float, 2>& label)
+    {
+        file.write((const char *) image.GetData(), image.GetDepth()*image.GetWidth()*image.GetHeight()*sizeof(ValueType));
+        file.write((const char *) (&label[0]), label.size()*sizeof(float));
+    };
+
+    CreateShape2DLocalizationImageTrainingData<ValueType>(defaultValue, shapeFillValue, imageDepth, imageDimension, depthsToShapeFill, collector_function);
 }
 
 template<typename ValueType>

@@ -5,7 +5,7 @@
 
 using namespace GoodBot;
 
-NetSpace::NetSpace(caffe2::Workspace& workspace) : Workspace(&workspace)
+NetSpace::NetSpace(caffe2::Workspace& workspace) : Workspace(&workspace), NextAdditionOrder(0)
 {
 }
 
@@ -24,6 +24,8 @@ void NetSpace::AddNetOp(const NetOp& netOp)
 SOM_ASSERT(!HasNetOp(netOp.GetName()), "NetOp " + netOp.GetName() + " already exists." );
 
 NetOps.emplace(netOp.GetName(), netOp);
+AdditionOrder.emplace(netOp.GetName(), NextAdditionOrder);
+NextAdditionOrder++;
 }
 
 const NetOp& NetSpace::GetNetOp(const std::string& netOpName) const
@@ -31,6 +33,13 @@ const NetOp& NetSpace::GetNetOp(const std::string& netOpName) const
 SOM_ASSERT(HasNetOp(netOpName), "NetOp " + netOpName + " not found.");
 
 return NetOps.at(netOpName);
+}
+
+int64_t NetSpace::GetNetOpOrder(const std::string& netOpName) const
+{
+    SOM_ASSERT(HasNetOp(netOpName), "NetOp " + netOpName + " not found.");
+
+    return AdditionOrder.at(netOpName);
 }
 
 const std::map<std::string, NetOp>& NetSpace::GetNetOps() const
@@ -149,6 +158,8 @@ std::vector<NetOp> GoodBot::GetActiveNetOps(const std::string& rootNetworkName, 
     const std::map<std::string, NetOp>& netops = netspace.GetNetOps();
 
     std::vector<NetOp> active_netops;
+    using NegativeAddOrderAndVectorIndex = std::pair<int64_t, int64_t>;
+    std::priority_queue<NegativeAddOrderAndVectorIndex> netop_order;
     for(const std::pair<std::string, NetOp>& netop_pair : netops)
     {
     if(GoodBot::StringAtStart(rootNetworkName, netop_pair.first))
@@ -158,6 +169,7 @@ std::vector<NetOp> GoodBot::GetActiveNetOps(const std::string& rootNetworkName, 
     if(( includeEmptyModeOps && (active_modes.size() == 0) ) || (activeModes.size() == 0))
     {
        //We have selected to add ops with no active mode listings.
+       netop_order.emplace(-netspace.GetNetOpOrder(netop_pair.first), active_netops.size());
        active_netops.emplace_back(netop_pair.second);
        continue;
     }
@@ -167,6 +179,8 @@ std::vector<NetOp> GoodBot::GetActiveNetOps(const std::string& rootNetworkName, 
     {
         if(std::find(active_modes.begin(), active_modes.end(), active_mode) != active_modes.end())
         {
+        netop_order.emplace(-netspace.GetNetOpOrder(netop_pair.first), active_netops.size());
+        active_netops.emplace_back(netop_pair.second);
         active_netops.emplace_back(netop_pair.second);
         break;
         }
@@ -174,7 +188,15 @@ std::vector<NetOp> GoodBot::GetActiveNetOps(const std::string& rootNetworkName, 
     }
     }
 
-    return active_netops;
+    //Reorder netops in the order they were added
+    std::vector<NetOp> reordered_netops;
+    while(netop_order.size() > 0)
+    {
+        reordered_netops.emplace_back(active_netops[netop_order.top().second]);
+        netop_order.pop();
+    }
+
+    return reordered_netops;
 }
 
 std::vector<std::string> GoodBot::GetTrainableBlobs(const std::string& networkName, const std::vector<std::string>& activeModes, const GoodBot::NetSpace& netspace)
@@ -275,6 +297,7 @@ std::vector<int64_t> GoodBot::GetConvOperatorOutputSize(const NetOp& op, const N
     int64_t pad = pad_arg->i();
 
     //Batch size, depth, height width
+    //Should be (image size - kernel size)/stride +1?
     int64_t kernel_loss = kernel == 2 ? 0 : ((kernel/2)*2);
     return {input_shape[0], output_depth, (input_shape[2]/stride+((input_shape[2] % stride) > 0))+2*pad-kernel_loss, (input_shape[3]/stride + ((input_shape[3] % stride) > 0))+2*pad-kernel_loss};
 }

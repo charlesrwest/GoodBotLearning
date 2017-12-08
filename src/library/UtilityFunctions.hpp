@@ -8,6 +8,18 @@ namespace GoodBot
 {
 
 /**
+  This function takes a file which consists of a sequence of (input/output) pairs which together for examples and splits it into 2 files.
+  @param fractionInFirst: What fraction of the examples should end up in the first file.
+  @param exampleSize: The size of each example (input/ouput pair) in bytes
+  @param batchSize: The number of examples in each batch (if needed, examples will be discarded so both files are a multiple of the batch size)
+  @param originalFilePath: The path to the file to split
+  @param firstFilePath: The path of the first output file
+  @param secondFilePath: The path of the second output file
+  */
+void SplitBlobberFile(double fractionInFirst, int64_t exampleSize, int64_t batchSize,
+                      const std::string& originalFilePath, const std::string& firstFilePath, const std::string& secondFilePath);
+
+/**
 This function returns true if the the pattern is found at the beginning of the string.
 @param pattern: The pattern to check for
 @param text: The text to check for the pattern in

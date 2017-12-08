@@ -2,8 +2,59 @@
 
 #include<cstdlib>
 #include "caffe2/core/operator_gradient.h"
+#include<fstream>
+#include "SOMException.hpp"
 
 using namespace GoodBot;
+
+void GoodBot::SplitBlobberFile(double fractionInFirst, int64_t exampleSize, int64_t batchSize,
+                      const std::string& originalFilePath, const std::string& firstFilePath, const std::string& secondFilePath)
+{
+    //Open at end of file
+    std::ifstream original_file_stream(originalFilePath, std::ifstream::binary | std::ifstream::ate);
+
+    int64_t original_file_size = original_file_stream.tellg();
+    SOM_ASSERT((original_file_size % exampleSize) == 0, "File size does not evenly divide by example size");
+    int64_t number_of_examples_in_original_file = original_file_size / exampleSize;
+    int64_t number_of_batches_in_original_file = number_of_examples_in_original_file / batchSize; //Truncate off examples which are not multiples of a batch size
+
+    int64_t number_of_batches_for_first_file = number_of_batches_in_original_file*fractionInFirst;
+    int64_t number_of_batches_for_second_file = number_of_batches_in_original_file - number_of_batches_for_first_file;
+
+    //Set back to start
+    original_file_stream.seekg(0);
+
+    std::vector<char> read_buffer(exampleSize*batchSize);
+
+    std::ofstream first_file_stream(firstFilePath, std::ofstream::binary);
+    std::ofstream second_file_stream(secondFilePath, std::ofstream::binary);
+    std::uniform_real_distribution<double> file_chooser(0.0, 1.0);
+    std::random_device randomness;
+    int64_t number_of_examples_in_first_file = 0;
+    int64_t number_of_examples_in_second_file = 0;
+
+    for(int64_t example_index = 0; example_index < (batchSize*(number_of_batches_for_first_file+number_of_batches_for_second_file)); example_index++)
+    {
+        bool first_file_full = number_of_examples_in_first_file >= (number_of_batches_for_first_file*batchSize);
+        bool second_file_full = number_of_examples_in_second_file >= (number_of_batches_for_second_file*batchSize);
+
+        //Distribute between the two files randomly
+        original_file_stream.read(&read_buffer[0], exampleSize);
+        if((second_file_full || (file_chooser(randomness) <= fractionInFirst)) && (!first_file_full))
+        {
+            first_file_stream.write(&read_buffer[0], exampleSize);
+            number_of_examples_in_first_file++;
+        }
+        else if(!second_file_full)
+        {
+            second_file_stream.write(&read_buffer[0], exampleSize);
+            number_of_examples_in_second_file++;
+        }
+
+        //If both files are full, just skip
+    }
+
+}
 
 bool GoodBot::StringAtStart(const std::string& pattern, const std::string& text)
 {
@@ -97,11 +148,11 @@ processedEntryIndices.emplace(inputOperatorIndex);
 numberOfEntriesRemovedThisLoop++;
 };
 
+//Loop until we run out of things to process, adding operators that have their input dependencies resolved and adding their outputs to the pool of available inputs
 while((numberOfEntriesRemovedThisLoop > 0) && (results.size() < inputOperators.size()))
 {
 numberOfEntriesRemovedThisLoop = 0;
-
-for(v_size_t operatorIndex = 0; operatorIndex < inputOperators.size(); operatorIndex++)
+for(size_t operatorIndex = 0; operatorIndex < inputOperators.size(); operatorIndex++)
 {
 const caffe2::OperatorDef& currentOperator = inputOperators[operatorIndex];
 
