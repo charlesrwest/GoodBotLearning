@@ -185,7 +185,7 @@ int main(int argc, char **argv)
         GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
 
         int64_t train_epoc_index = 0;
-        int64_t number_of_training_epocs = 200;
+        int64_t number_of_training_epocs = 20;
         double best_test_loss = std::numeric_limits<double>::max();
         double final_test_loss = std::numeric_limits<double>::max();
         std::array<double, 2> xDims{std::numeric_limits<double>::max(),std::numeric_limits<double>::min()};
