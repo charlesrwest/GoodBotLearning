@@ -288,7 +288,7 @@ int main(int argc, char **argv)
 
     try
     {
-        //TestHyperParameter({.0001}, {0, 660, 0, 3, 2});
+        TestHyperParameter({.0001}, {0, 660, 0, 3, 2});
     }
     catch(const std::exception& exception)
     {
@@ -320,7 +320,7 @@ int main(int argc, char **argv)
     int64_t MaxRunTimeMilliSeconds = 1000*60*60*24*7; //Go for about a week
 
     GoodBot::Optimizer experimenter(TestHyperParameter, integer_ranges, double_ranges,
-    {}, 100, .5);
+    {}, 1000, .5);
 
     experimenter.Search(MaxRunTimeMilliSeconds);
 
