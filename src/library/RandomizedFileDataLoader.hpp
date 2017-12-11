@@ -12,7 +12,8 @@ namespace GoodBot
 class RandomizedFileDataLoader : public DataLoader
 {
 public:
-RandomizedFileDataLoader(const std::string& sourceFilePath, int64_t inputBlobSize, int64_t outputBlobSize, int64_t numberOfBlobsPerBuffer, int64_t numberOfBuffers, int64_t maxRereadsBeforeRefill);
+RandomizedFileDataLoader(const std::string& sourceFilePath, int64_t inputBlobSize, int64_t outputBlobSize,
+                         int64_t numberOfBlobsPerBuffer, int64_t numberOfBuffers);
 
 virtual bool ReadBlob(char* inputBufferAddress, char* outputBufferAddress) override;
 
@@ -22,24 +23,25 @@ virtual int64_t GetExpectedOutputDataSize() const override;
 
 protected:
 //Seek to a random place in the file and fill a buffer
+bool FillBuffersIfEmpty(); //Returns true if all blobs in file were explored before
 void FillBuffer(int64_t bufferIndex);
+void FillFileOffsets();
+int64_t GetRandomNonEmptyBufferIndex();
+
 
 std::random_device RandomDevice;
 std::mt19937 Randomness;
-std::uniform_int_distribution<int64_t> BufferSelector;
-std::uniform_int_distribution<int64_t> FileBlobIndexSelector;
 
 std::ifstream File;
 int64_t FileSizeInBytes;
 int64_t InputBlobSize;
 int64_t OutputBlobSize;
 int64_t NumberOfBlobsPerBuffer;
-int64_t MaxRereadsBeforeRefill;  //How many times to read each example in a buffer before refilling the buffer
 
+std::queue<int64_t> FileOffsets; //Remaining places in the file to read from
 std::vector<std::queue<int64_t>> RandomBlobIndexBuffers;
 
-std::vector<std::vector<char>> InputBuffers;
-std::vector<std::vector<char>> OutputBuffers;
+std::vector<std::vector<char>> Buffers;
 };
 
 

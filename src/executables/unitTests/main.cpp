@@ -947,7 +947,7 @@ REQUIRE(file_size == ((input_blob_size+output_blob_size)*numberOfEntries));
 }
 
 //Make a data loader and see if the retrieved blobs are coherent (match input/output rule)
-GoodBot::RandomizedFileDataLoader loader(temp_file_name, input_blob_size, output_blob_size, bufferSize, numberOfBuffers, maxRereadsBeforeRefill);
+GoodBot::RandomizedFileDataLoader loader(temp_file_name, input_blob_size, output_blob_size, bufferSize, numberOfBuffers);
 
 std::vector<uint64_t> input_buffer(inputSequenceLength*batchSize);
 std::vector<uint64_t> output_buffer(outputSequenceLength*batchSize);

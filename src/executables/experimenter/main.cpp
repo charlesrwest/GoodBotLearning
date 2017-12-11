@@ -30,7 +30,7 @@ int main(int argc, char **argv)
                           "squareLocalization.blobber", "squareLocalizationTrain.blobber", "squareLocalizationTest.blobber");
 
     //Setup experiment logger
-    GoodBot::RandomizedFileDataLoader training_data_source("squareLocalizationTrain.blobber", example_input_size, example_output_size, 50, 10, 1);
+    GoodBot::RandomizedFileDataLoader training_data_source("squareLocalizationTrain.blobber", example_input_size, example_output_size, 50, 10);
     GoodBot::SequentialFileDataLoader test_data_source("squareLocalizationTest.blobber", example_input_size, example_output_size, 50);
 
     GoodBot::ExperimentLogger logger("ExperimentLog.db");
@@ -195,7 +195,7 @@ int main(int argc, char **argv)
         for(; train_epoc_index < number_of_training_epocs; iteration++)
         {
         //Load data into blobs
-        training_data_source.ReadBlobs((char *) input_blob.mutable_data<int8_t>(),
+        bool train_epoc_finished = training_data_source.ReadBlobs((char *) input_blob.mutable_data<int8_t>(),
                                                                   (char *) expected_output_blob.mutable_data<float>(), batch_size);
         //Run network with loaded instance
         shape_2d_localize_train_net->Run();
@@ -222,7 +222,7 @@ int main(int argc, char **argv)
             //std::cout << "Expected/Received output: (" << expected_output_blob.mutable_data<float>()[batch_index*2] << ", " << expected_output_blob.mutable_data<float>()[batch_index*2 + 1] << ") (" << shape_2d_localize_fc_output_cpu.mutable_data<float>()[batch_index*2] << ", " << shape_2d_localize_fc_output_cpu.mutable_data<float>()[batch_index*2 + 1] << ")" << std::endl;
         }
 
-        if((iteration % (test_epoc_example_count*5)) == 0)
+        if(train_epoc_finished)
         {
             //Get the average test error
             bool last_example_in_test_epoc = false;
