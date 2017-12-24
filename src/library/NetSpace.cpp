@@ -74,7 +74,7 @@ if(GoodBot::GetArgument("shape", creatorOp.GetOperatorDef()) != nullptr)
 
 const std::string& type = creatorOp.GetOperatorDef().type();
 
-const static std::vector<std::string> allowed_types{"FC", "Scale", "Cast", "Conv", "MaxPool", "CopyCPUToGPU", "CopyGPUToCPU", "SpatialBN"}; //Could sort and make binary search at some point
+const static std::vector<std::string> allowed_types{"FC", "Scale", "Cast", "Conv", "MaxPool", "CopyCPUToGPU", "CopyGPUToCPU", "SpatialBN", "Sum"}; //Could sort and make binary search at some point
 
 return std::find(allowed_types.begin(), allowed_types.end(), type) != allowed_types.end();
 }
@@ -102,7 +102,7 @@ if(IsType("FC", creatorOp))
 {
 return GetFCOperatorOutputSize(creatorOp, netSpace);
 }
-else if(IsType("Scale", creatorOp) || IsType("Cast", creatorOp) || IsType("CopyCPUToGPU", creatorOp) || IsType("CopyGPUToCPU", creatorOp) || IsType("SpatialBN", creatorOp))
+else if(IsType("Scale", creatorOp) || IsType("Cast", creatorOp) || IsType("CopyCPUToGPU", creatorOp) || IsType("CopyGPUToCPU", creatorOp) || IsType("SpatialBN", creatorOp) || IsType("Sum", creatorOp))
 {
 //Passthrough, just get input size
 return GetBlobShape(GetInputName(creatorOp, 0), netSpace);
@@ -297,9 +297,7 @@ std::vector<int64_t> GoodBot::GetConvOperatorOutputSize(const NetOp& op, const N
     int64_t pad = pad_arg->i();
 
     //Batch size, depth, height width
-    //Should be (image size - kernel size)/stride +1?
-    int64_t kernel_loss = kernel == 2 ? 0 : ((kernel/2)*2);
-    return {input_shape[0], output_depth, (input_shape[2]/stride+((input_shape[2] % stride) > 0))+2*pad-kernel_loss, (input_shape[3]/stride + ((input_shape[3] % stride) > 0))+2*pad-kernel_loss};
+    return {input_shape[0], output_depth, (input_shape[2] - kernel + 2*pad)/stride + 1, (input_shape[3] - kernel + 2*pad)/stride + 1};
 }
 
 std::vector<int64_t> GoodBot::GetMaxPoolOperatorOutputSize(const NetOp& op, const NetSpace& netSpace)
@@ -330,6 +328,6 @@ std::vector<int64_t> GoodBot::GetMaxPoolOperatorOutputSize(const NetOp& op, cons
 
     //Batch size, depth, height width
     int64_t kernel_loss = kernel == 2 ? 0 : ((kernel/2)*2);
-    return {input_shape[0], input_shape[1], (input_shape[2]/stride)+2*pad-kernel_loss, (input_shape[3]/stride)+2*pad-kernel_loss};
+    return {input_shape[0], input_shape[1], (input_shape[2] - kernel + 2*pad)/stride + 1, (input_shape[3] - kernel + 2*pad)/stride + 1};
 }
 

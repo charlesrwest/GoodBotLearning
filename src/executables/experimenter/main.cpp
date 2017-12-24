@@ -67,7 +67,7 @@ int main(int argc, char **argv)
 
         //void AddEntry(const LogEntry& entry);
         GoodBot::LogEntry entry;
-        entry.ExperimentGroupName = "SquareLocalization_with_BN";
+        entry.ExperimentGroupName = "SquareLocalizationResnet";
         entry.DataSetName = "SquareLocalization_" + std::to_string(image_dimension);
         entry.InvestigationMethod = "CRWSplittingNLO";
         entry.DoubleHyperParameters["LearningRate"] = {learning_rate};
@@ -106,36 +106,65 @@ int main(int argc, char **argv)
 
         //Add batch normalization at input to automatically scale/shift input into proper range
         GoodBot::AddSpatialBNModule("shape_2d_localize_input_BN", "input_blob_scaled", "shape_2d_localize_input_BN", .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
-        std::string network_head = "shape_2d_localize_input_BN";
+
+        auto AddRes = [&netspace](const std::string& input, int64_t outputDepth, int64_t stride, int64_t resIndex) -> std::string
+        {
+            std::string res_name = "shape_2d_localize_res_" + std::to_string(resIndex);
+
+            std::string sum_name = res_name + "_branch_sum";
+
+            auto MakeConvName= [&](int64_t convIndex)
+            {
+                return res_name + "_conv_" + std::to_string(convIndex);
+            };
+
+            auto MakeConvBNName = [&](int64_t convIndex)
+            {
+                return res_name + "_BN_" + std::to_string(convIndex);
+            };
+
+            std::string network_head = input;
+
+            AddConvModule(MakeConvName(0), network_head, MakeConvName(0), outputDepth, stride, 1, 3, "XavierFill", "ConstantFill", netspace);
+            AddReluOp(MakeConvName(0)+"_relu", MakeConvName(0), MakeConvName(0), {}, netspace);
+            AddSpatialBNModule(MakeConvBNName(0), MakeConvName(0), MakeConvBNName(0), .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
+            network_head = MakeConvBNName(0);
+
+            AddConvModule(MakeConvName(1), network_head, MakeConvName(1), outputDepth, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+            AddReluOp(MakeConvName(1)+"_relu", MakeConvName(1), MakeConvName(1), {}, netspace);
+            AddSpatialBNModule(MakeConvBNName(1), MakeConvName(1), MakeConvBNName(1), .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
+            network_head = MakeConvBNName(1);
+
+            AddConvModule(MakeConvName(2), network_head, MakeConvName(2), outputDepth, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
+            AddSpatialBNModule(MakeConvBNName(2), MakeConvName(2), MakeConvBNName(2), .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
+            network_head = MakeConvBNName(2);
+
+            //If the network depth has changed or the stide is not 1, then add a 1x1 conv
+            std::string skip_output_name = input;
+            std::vector<int64_t> input_shape = GetBlobShape(input, netspace);
+            std::vector<int64_t> network_head_shape = GetBlobShape(network_head, netspace);
+
+            SOM_ASSERT(input_shape.size() > 1, "Input blob is of dim <2?");
+            if((input_shape[2] != outputDepth) || stride != 1)
+            {
+                skip_output_name = MakeConvName(0) + "_skip";
+                AddConvModule(MakeConvName(0) + "_skip", input, skip_output_name, outputDepth, stride, 0, 1, "XavierFill", "ConstantFill", netspace);
+            }
+            std::vector<int64_t> skip_output_name_shape = GetBlobShape(skip_output_name, netspace);
+
+            AddSumOp(sum_name, {skip_output_name, MakeConvBNName(2)}, sum_name, {}, netspace);
+
+            AddReluOp(sum_name+"_relu", sum_name, sum_name, {}, netspace);
+
+            return sum_name;
+        };
 
         //Add convolution modules as indicated by hyper parameters
         int64_t conv_depth = number_of_filters_at_base_layer;
-        auto MakeConvName = [](int64_t moduleIndex, int64_t subIndex)
-        {
-          if(subIndex < 2)
-          {
-              return "shape_2d_localize_conv_" + std::to_string(moduleIndex) + "_" + std::to_string(subIndex);
-          }
-
-          return "shape_2d_localize_conv_" +std::to_string(moduleIndex) + "_relu_" + std::to_string(subIndex);
-        };
-        auto MakeConvBNName = [](int64_t moduleIndex, int64_t subIndex)
-        {
-          if(subIndex < 2)
-          {
-              return "shape_2d_localize_conv_BN" + std::to_string(moduleIndex) + "_" + std::to_string(subIndex);
-          }
-
-          return "shape_2d_localize_conv_" +std::to_string(moduleIndex) + "_relu_" + std::to_string(subIndex);
-        };
+        std::string network_head = "shape_2d_localize_input_BN";
         for( int64_t conv_module_index = 0; conv_module_index < number_of_convolutional_modules; conv_module_index++)
         {
-            AddConvModule(MakeConvName(conv_module_index, 0), network_head, MakeConvName(conv_module_index, 0), conv_depth, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
-            AddSpatialBNModule(MakeConvBNName(conv_module_index, 0), MakeConvName(conv_module_index, 0), MakeConvBNName(conv_module_index, 0), .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
-            AddConvModule(MakeConvName(conv_module_index, 1), MakeConvBNName(conv_module_index, 0), MakeConvName(conv_module_index, 1), conv_depth, stride_level, 1, 3, "XavierFill", "ConstantFill", netspace);
-            AddSpatialBNModule(MakeConvBNName(conv_module_index, 1), MakeConvName(conv_module_index, 1), MakeConvBNName(conv_module_index, 1), .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
-            AddReluOp(MakeConvName(conv_module_index, 2), MakeConvBNName(conv_module_index, 1), MakeConvBNName(conv_module_index, 1), {}, netspace);
-            network_head = MakeConvBNName(conv_module_index, 1);
+            network_head = AddRes(network_head, conv_depth, stride_level, conv_module_index);
             conv_depth = conv_depth*stride_level;
         }
 
@@ -313,7 +342,7 @@ int main(int argc, char **argv)
 
     try
     {
-        TestHyperParameter({.0001}, {0, 660, 4, 10, 1});
+        TestHyperParameter({.0001}, {0, 660, 3, 10, 1});
     }
     catch(const std::exception& exception)
     {
@@ -338,7 +367,7 @@ int main(int argc, char **argv)
     integer_ranges.emplace_back(0, 1000);
     integer_ranges.emplace_back(0,4);
     integer_ranges.emplace_back(1,30);
-    integer_ranges.emplace_back(1,3);
+    integer_ranges.emplace_back(1,2);
 
     double_ranges.emplace_back(0.001, .0005);
 
@@ -347,7 +376,7 @@ int main(int argc, char **argv)
     GoodBot::Optimizer experimenter(TestHyperParameter, integer_ranges, double_ranges,
     {}, 1000, .5);
 
-    //experimenter.Search(MaxRunTimeMilliSeconds);
+    experimenter.Search(MaxRunTimeMilliSeconds);
 
     return 0;
 }

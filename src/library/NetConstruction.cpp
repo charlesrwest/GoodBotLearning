@@ -483,3 +483,10 @@ void GoodBot::AddSpatialBNModule(const std::string& opName, const std::string& i
     //Add test version
     AddSpatialBNOp(opName + "_test", inputName, outputName, scale_name, bias_name, mean_name, variance_name, momentum, epsilon, dataOrder, testActiveModes, netspace);
 }
+
+void GoodBot::AddSumOp(const std::string& opName, const std::vector<std::string>& inputNames, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, inputNames, {outputName}, "Sum", {}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
