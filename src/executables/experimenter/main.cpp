@@ -334,7 +334,7 @@ int main(int argc, char **argv)
 
     std::vector<GoodBot::IntegerRange> integer_ranges;
     std::vector<GoodBot::DoubleRange> double_ranges;
-    integer_ranges.emplace_back(0, 4);
+    integer_ranges.emplace_back(0, 0);
     integer_ranges.emplace_back(0, 1000);
     integer_ranges.emplace_back(0,4);
     integer_ranges.emplace_back(1,30);
