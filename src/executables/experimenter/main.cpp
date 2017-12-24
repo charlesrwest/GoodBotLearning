@@ -18,7 +18,7 @@ int main(int argc, char **argv)
     //Define dataset name
     int64_t input_depth = 1;
     int64_t image_dimension = 200;
-    int64_t batch_size = 64;
+    int64_t batch_size = 32;
 
     //Produce the training data
     CreateAndSaveShape2DLocalizationImageTrainingData<char>(0, 100, input_depth, image_dimension, {0}, "squareLocalization.blobber");
@@ -67,7 +67,7 @@ int main(int argc, char **argv)
 
         //void AddEntry(const LogEntry& entry);
         GoodBot::LogEntry entry;
-        entry.ExperimentGroupName = "SquareLocalization";
+        entry.ExperimentGroupName = "SquareLocalization_with_BN";
         entry.DataSetName = "SquareLocalization_" + std::to_string(image_dimension);
         entry.InvestigationMethod = "CRWSplittingNLO";
         entry.DoubleHyperParameters["LearningRate"] = {learning_rate};
@@ -104,8 +104,11 @@ int main(int argc, char **argv)
         GoodBot::AddCastOp("shape_2d_localize_cast", "input_blob_gpu", "INT8", "input_blob_casted", "FLOAT", {}, netspace);
         AddScaleOp("shape_2d_localize_scale", "input_blob_casted", "input_blob_scaled", (1.0/128.0), {}, netspace);
 
+        //Add batch normalization at input to automatically scale/shift input into proper range
+        GoodBot::AddSpatialBNModule("shape_2d_localize_input_BN", "input_blob_scaled", "shape_2d_localize_input_BN", .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
+        std::string network_head = "shape_2d_localize_input_BN";
+
         //Add convolution modules as indicated by hyper parameters
-        std::string network_head = "input_blob_scaled";
         int64_t conv_depth = number_of_filters_at_base_layer;
         auto MakeConvName = [](int64_t moduleIndex, int64_t subIndex)
         {
@@ -116,12 +119,23 @@ int main(int argc, char **argv)
 
           return "shape_2d_localize_conv_" +std::to_string(moduleIndex) + "_relu_" + std::to_string(subIndex);
         };
+        auto MakeConvBNName = [](int64_t moduleIndex, int64_t subIndex)
+        {
+          if(subIndex < 2)
+          {
+              return "shape_2d_localize_conv_BN" + std::to_string(moduleIndex) + "_" + std::to_string(subIndex);
+          }
+
+          return "shape_2d_localize_conv_" +std::to_string(moduleIndex) + "_relu_" + std::to_string(subIndex);
+        };
         for( int64_t conv_module_index = 0; conv_module_index < number_of_convolutional_modules; conv_module_index++)
         {
             AddConvModule(MakeConvName(conv_module_index, 0), network_head, MakeConvName(conv_module_index, 0), conv_depth, 1, 1, 3, "XavierFill", "ConstantFill", netspace);
-            AddConvModule(MakeConvName(conv_module_index, 1), MakeConvName(conv_module_index, 0), MakeConvName(conv_module_index, 1), conv_depth, stride_level, 1, 3, "XavierFill", "ConstantFill", netspace);
-            AddReluOp(MakeConvName(conv_module_index, 2), MakeConvName(conv_module_index, 1), MakeConvName(conv_module_index, 1), {}, netspace);
-            network_head = MakeConvName(conv_module_index, 1);
+            AddSpatialBNModule(MakeConvBNName(conv_module_index, 0), MakeConvName(conv_module_index, 0), MakeConvBNName(conv_module_index, 0), .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
+            AddConvModule(MakeConvName(conv_module_index, 1), MakeConvBNName(conv_module_index, 0), MakeConvName(conv_module_index, 1), conv_depth, stride_level, 1, 3, "XavierFill", "ConstantFill", netspace);
+            AddSpatialBNModule(MakeConvBNName(conv_module_index, 1), MakeConvName(conv_module_index, 1), MakeConvBNName(conv_module_index, 1), .1, .001, "NCHW", {"TRAIN"}, {"TEST"}, netspace);
+            AddReluOp(MakeConvName(conv_module_index, 2), MakeConvBNName(conv_module_index, 1), MakeConvBNName(conv_module_index, 1), {}, netspace);
+            network_head = MakeConvBNName(conv_module_index, 1);
             conv_depth = conv_depth*stride_level;
         }
 
@@ -169,11 +183,12 @@ int main(int argc, char **argv)
         caffe2::TensorCPU& input_blob = GoodBot::GetMutableTensor("input_blob", workspace);
         caffe2::TensorCPU& expected_output_blob = GoodBot::GetMutableTensor("expected_output_blob", workspace);
 
-
         //Create training network
         caffe2::NetDef shape_2d_localize_train_def = GoodBot::GetNetwork("shape_2d_localize", "TRAIN", true, netspace);
         shape_2d_localize_train_def.mutable_device_option()->set_device_type(caffe2::CUDA); //Set type to CUDA for all ops which have not directly forced CPU
         caffe2::NetBase* shape_2d_localize_train_net = workspace.CreateNet(shape_2d_localize_train_def);
+
+        print(shape_2d_localize_train_def);
 
         //Create test network
         caffe2::NetDef shape_2d_localize_test_def = GoodBot::GetNetwork("shape_2d_localize", "TEST", true, netspace);
@@ -182,11 +197,13 @@ int main(int argc, char **argv)
 
         //print(shape_2d_localize_test_def);
 
-        GoodBot::ExponentialMovingAverage moving_average(1.0 / (10));
+        GoodBot::ExponentialMovingAverage training_error_moving_average(1.0 / (10));
+        GoodBot::ExponentialMovingAverage test_error_moving_average(1.0 / (10));
 
         int64_t train_epoc_index = 0;
-        int64_t number_of_training_epocs = 20;
+        int64_t number_of_training_epocs = 100;
         double best_test_loss = std::numeric_limits<double>::max();
+        double best_test_loss_moving_average = std::numeric_limits<double>::max();
         double final_test_loss = std::numeric_limits<double>::max();
         std::array<double, 2> xDims{std::numeric_limits<double>::max(),std::numeric_limits<double>::min()};
         std::array<double, 2> yDims{std::numeric_limits<double>::max(),std::numeric_limits<double>::min()};
@@ -206,7 +223,7 @@ int main(int argc, char **argv)
         caffe2::TensorCPU& shape_2d_localize_fc_output_cpu = GoodBot::GetMutableTensor("shape_2d_localize_fc_output_cpu", workspace);
 
         //std::cout << "Loss : " << loss.mutable_data<float>()[0] << std::endl;
-        moving_average.Update(loss.mutable_data<float>()[0]);
+        training_error_moving_average.Update(loss.mutable_data<float>()[0]);
 
         xDims[0] = std::min<double>(xDims[0], expected_output_blob.mutable_data<float>()[0]);
         xDims[1] = std::max<double>(xDims[1], expected_output_blob.mutable_data<float>()[0]);
@@ -249,11 +266,19 @@ int main(int argc, char **argv)
                 test_epoc_example_count++;
             }
             average_test_loss = average_test_loss / test_epoc_example_count;
+            test_error_moving_average.Update(average_test_loss);
 
             std::cout << "test loss (" << train_epoc_index << "): " << average_test_loss << std::endl;
-                    std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << std::endl;
+            std::cout << "Moving average training loss ( " << iteration << " ): " << training_error_moving_average.GetAverage() << std::endl;
             final_test_loss = average_test_loss;
             best_test_loss = std::min(average_test_loss, best_test_loss);
+            best_test_loss_moving_average = std::min(best_test_loss_moving_average, test_error_moving_average.GetAverage());
+
+            if(test_error_moving_average.GetAverage() > (2.0*best_test_loss_moving_average))
+            {
+                //Test error is starting to go up, so early exit
+                break;
+            }
 
             train_epoc_index++;
         }
@@ -275,12 +300,12 @@ int main(int argc, char **argv)
         //TODO: Make associated netspace functions
         entry.HashOfNetspace = "";
         entry.NetspaceSummary = "";
-        entry.DoubleHyperParameters["TrainingLossMovingAverage"] = {moving_average.GetAverage()};
+        entry.DoubleHyperParameters["TrainingLossMovingAverage"] = {training_error_moving_average.GetAverage()};
         entry.IntegerHyperParameters["BatchSize"] = {batch_size};
 
         logger.AddEntry(entry);
         std::cout << "best test loss: " << best_test_loss << std::endl;
-        std::cout << "Moving average loss ( " << iteration << " ): " << moving_average.GetAverage() << std::endl;
+        std::cout << "Moving average loss ( " << iteration << " ): " << training_error_moving_average.GetAverage() << std::endl;
 
         return best_test_loss;
     };
@@ -288,7 +313,7 @@ int main(int argc, char **argv)
 
     try
     {
-        TestHyperParameter({.0001}, {0, 660, 0, 3, 2});
+        TestHyperParameter({.0001}, {0, 660, 4, 10, 1});
     }
     catch(const std::exception& exception)
     {
@@ -322,7 +347,7 @@ int main(int argc, char **argv)
     GoodBot::Optimizer experimenter(TestHyperParameter, integer_ranges, double_ranges,
     {}, 1000, .5);
 
-    experimenter.Search(MaxRunTimeMilliSeconds);
+    //experimenter.Search(MaxRunTimeMilliSeconds);
 
     return 0;
 }

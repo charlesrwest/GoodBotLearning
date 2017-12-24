@@ -74,7 +74,7 @@ if(GoodBot::GetArgument("shape", creatorOp.GetOperatorDef()) != nullptr)
 
 const std::string& type = creatorOp.GetOperatorDef().type();
 
-const static std::vector<std::string> allowed_types{"FC", "Scale", "Cast", "Conv", "MaxPool", "CopyCPUToGPU", "CopyGPUToCPU"}; //Could sort and make binary search at some point
+const static std::vector<std::string> allowed_types{"FC", "Scale", "Cast", "Conv", "MaxPool", "CopyCPUToGPU", "CopyGPUToCPU", "SpatialBN"}; //Could sort and make binary search at some point
 
 return std::find(allowed_types.begin(), allowed_types.end(), type) != allowed_types.end();
 }
@@ -102,7 +102,7 @@ if(IsType("FC", creatorOp))
 {
 return GetFCOperatorOutputSize(creatorOp, netSpace);
 }
-else if(IsType("Scale", creatorOp) || IsType("Cast", creatorOp) || IsType("CopyCPUToGPU", creatorOp) || IsType("CopyGPUToCPU", creatorOp))
+else if(IsType("Scale", creatorOp) || IsType("Cast", creatorOp) || IsType("CopyCPUToGPU", creatorOp) || IsType("CopyGPUToCPU", creatorOp) || IsType("SpatialBN", creatorOp))
 {
 //Passthrough, just get input size
 return GetBlobShape(GetInputName(creatorOp, 0), netSpace);

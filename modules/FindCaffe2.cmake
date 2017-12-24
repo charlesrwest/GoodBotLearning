@@ -11,8 +11,8 @@ HINTS
 /usr/local/include)
 
 find_library(Caffe2_LIBS NAMES 
-Caffe2_CPU
-Caffe2_GPU
+caffe2_cpu
+caffe2_gpu
 HINTS
 /usr/local/lib)
 

@@ -439,3 +439,47 @@ void GoodBot::AddCopyGPUToCPU(const std::string& opName, const std::string& inpu
 
     netspace.AddNetOp(op);
 }
+
+void GoodBot::AddSpatialBNOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::string& scaleName, const std::string& biasName, const std::string& meanName, const std::string& varianceName, const std::string& savedMeanName, const std::string& savedVarianceName, float momentum, float epsilon, const std::string& dataOrder, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName, scaleName, biasName, meanName, varianceName}, {outputName, meanName, varianceName, savedMeanName, savedVarianceName}, "SpatialBN", {{"is_test", false}, {"momentum", momentum}, {"epsilon", epsilon}, {"order", dataOrder}}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddSpatialBNOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::string& scaleName, const std::string& biasName, const std::string& meanName, const std::string& varianceName, float momentum, float epsilon, const std::string& dataOrder, const std::vector<std::string>& activeModes, NetSpace& netspace)
+{
+    NetOp op(GoodBot::CreateOpDef(opName, {inputName, scaleName, biasName, meanName, varianceName}, {outputName}, "SpatialBN", {{"is_test", true}, {"momentum", momentum}, {"epsilon", epsilon}, {"order", dataOrder}}), activeModes, false);
+
+    netspace.AddNetOp(op);
+}
+
+void GoodBot::AddSpatialBNModule(const std::string& opName, const std::string& inputName, const std::string& outputName, float momentum, float epsilon, const std::string& dataOrder, const std::vector<std::string>& trainActiveModes, const std::vector<std::string>& testActiveModes, NetSpace& netspace)
+{
+    std::vector<int64_t> input_shape = GetBlobShape(inputName, netspace);
+
+    //Initialization
+    std::string scale_name = opName+"_scale";
+    AddXavierOp(scale_name, scale_name, {input_shape[1]}, {"INIT"}, true, netspace);
+
+    std::string bias_name = opName+"_bias";
+    AddConstantFillOp(bias_name, bias_name, 0.0f, caffe2::TensorProto::FLOAT, {input_shape[1]}, {"INIT"}, true, netspace);
+
+    std::string mean_name = opName+"_mean";
+    AddXavierOp(mean_name, mean_name, {input_shape[1]}, {"INIT"}, false, netspace);
+
+    std::string variance_name = opName+"_variance";
+    AddXavierOp(variance_name, variance_name, {input_shape[1]}, {"INIT"}, false, netspace);
+
+    std::string saved_mean_name = opName+"_saved_mean";
+    AddXavierOp(saved_mean_name, saved_mean_name, {input_shape[1]}, {"INIT"}, false, netspace);
+
+    std::string saved_variance_name = opName+"_saved_variance";
+    AddXavierOp(saved_variance_name, saved_variance_name, {input_shape[1]}, {"INIT"}, false, netspace);
+
+    //Add train version
+    AddSpatialBNOp(opName + "_train", inputName, outputName, scale_name, bias_name, mean_name, variance_name, saved_mean_name, saved_variance_name, momentum, epsilon, dataOrder, trainActiveModes, netspace);
+
+    //Add test version
+    AddSpatialBNOp(opName + "_test", inputName, outputName, scale_name, bias_name, mean_name, variance_name, momentum, epsilon, dataOrder, testActiveModes, netspace);
+}

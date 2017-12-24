@@ -111,4 +111,9 @@ void AddCopyCPUToGPU(const std::string& opName, const std::string& inputName, co
 
 void AddCopyGPUToCPU(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::vector<std::string>& activeModes, NetSpace& netspace);
 
+void AddSpatialBNOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::string& scaleName, const std::string& biasName, const std::string& meanName, const std::string& varianceName, const std::string& savedMeanName, const std::string& savedVarianceName, float momentum, float epsilon, const std::string& dataOrder, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddSpatialBNOp(const std::string& opName, const std::string& inputName, const std::string& outputName, const std::string& scaleName, const std::string& biasName, const std::string& meanName, const std::string& varianceName, float momentum, float epsilon, const std::string& dataOrder, const std::vector<std::string>& activeModes, NetSpace& netspace);
+
+void AddSpatialBNModule(const std::string& opName, const std::string& inputName, const std::string& outputName, float momentum, float epsilon, const std::string& dataOrder, const std::vector<std::string>& trainActiveModes, const std::vector<std::string>& testActiveModes, NetSpace& netspace);
 }
