@@ -342,7 +342,7 @@ int main(int argc, char **argv)
 
     try
     {
-        TestHyperParameter({.0001}, {0, 660, 1, 10, 1});
+        TestHyperParameter({.00001}, {0, 660, 1, 10, 1});
     }
     catch(const std::exception& exception)
     {

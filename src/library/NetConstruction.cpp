@@ -280,6 +280,8 @@ std::vector<NetOp> ops = GetActiveNetOps(networkName, activeModes, true, netspac
 
 for(const NetOp& op : ops)
 {
+    std::string op_name = op.GetName();
+
     if(!MakesGradients(op))
     {
         continue;
