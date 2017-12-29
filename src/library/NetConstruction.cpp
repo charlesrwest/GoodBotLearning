@@ -284,15 +284,18 @@ for(const NetOp& op : ops)
 
     if(!MakesGradients(op))
     {
+        std::cout << op_name << " does not make gradients" << std::endl;
         continue;
     }
 
     std::vector<caffe2::OperatorDef> gradient_operators = GetGradientOperatorsFromOperator(op.GetOperatorDef());
+    std::cout << op_name << " makes " << gradient_operators.size() << " gradient operators" << std::endl;
 
     for(int64_t gradient_def_index = 0; gradient_def_index < gradient_operators.size(); gradient_def_index++)
     {
         caffe2::OperatorDef opDef = gradient_operators[gradient_def_index];
         (*opDef.mutable_name()) = op.GetName() + "_grad_" + std::to_string(gradient_def_index);
+        std::cout << "Gradient "<<  op.GetName() + "_grad_" + std::to_string(gradient_def_index) << std::endl;
 
         netspace.AddNetOp(NetOp(opDef, activeModes, false));
     }
@@ -324,7 +327,7 @@ void GoodBot::AddAdamSolvers(const std::string& networkName, NetSpace& netspace,
     //Make iterator blob/operator
     std::string iter_blob_name = networkName+"_adam_iteration_count";
     AddConstantFillOp(iter_blob_name, iter_blob_name, (int64_t) 0, caffe2::TensorProto::INT64, {1}, {"INIT"}, false, caffe2::CPU, netspace ); //Force iter blob CPU
-    AddIterOp(networkName+"_adam_iter", networkName+"_adam_iter", {"TRAIN"}, netspace);
+    AddIterOp(networkName+"_adam_iter", iter_blob_name, {"TRAIN"}, netspace);
 
     //Make learning rate blob
     std::string learning_rate_blob_name = networkName+"_adam_learning_rate";

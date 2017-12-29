@@ -152,7 +152,7 @@ int main(int argc, char **argv)
             }
             std::vector<int64_t> skip_output_name_shape = GetBlobShape(skip_output_name, netspace);
 
-            AddSumOp(sum_name, {skip_output_name, MakeConvBNName(2)}, sum_name, {}, netspace);
+            AddSumOp(sum_name, {skip_output_name, network_head}, sum_name, {}, netspace);
 
             AddReluOp(sum_name+"_relu", sum_name, sum_name, {}, netspace);
 
@@ -216,6 +216,12 @@ int main(int argc, char **argv)
         caffe2::NetDef shape_2d_localize_train_def = GoodBot::GetNetwork("shape_2d_localize", "TRAIN", true, netspace);
         shape_2d_localize_train_def.mutable_device_option()->set_device_type(caffe2::CUDA); //Set type to CUDA for all ops which have not directly forced CPU
         caffe2::NetBase* shape_2d_localize_train_net = workspace.CreateNet(shape_2d_localize_train_def);
+
+        std::cout << "Netops:" << std::endl;
+        for(const std::pair<std::string, GoodBot::NetOp>& netop_pair : netspace.GetNetOps())
+        {
+            std::cout << netop_pair.first << std::endl;
+        }
 
         print(shape_2d_localize_train_def);
 
@@ -342,7 +348,7 @@ int main(int argc, char **argv)
 
     try
     {
-        TestHyperParameter({.00001}, {0, 660, 1, 10, 1});
+        TestHyperParameter({.0001}, {0, 660, 4, 10, 1});
     }
     catch(const std::exception& exception)
     {

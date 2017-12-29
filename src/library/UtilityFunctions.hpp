@@ -48,6 +48,13 @@ This function attempts to make a gradient computation operator for the given net
 std::vector<caffe2::OperatorDef> GetGradientOperatorsFromOperator(const caffe2::OperatorDef& inputOperator);
 
 /**
+ * Some have gradients that just pass through (such as "Sum"), so sum_input_grad_names should be set to sum_output_grad_name.
+ * @param inputOperator: The operator to check for replacements
+ * @return: The list of blobs to replace (first is replaced by second)
+ */
+std::vector<std::pair<std::string, std::string>> GetGradientNamesToReplace(const caffe2::OperatorDef& inputOperator);
+
+/**
 Network operators can create blobs by having them as outputs.  However, caffe2 throws an error if it encounters an operator which references an input that hasn't been made yet as it works through a network definition (even if it is defined as an output in one of the later operators).  This function was created to prevent these sorts of failures.  It analyzes which blobs create which outputs and reorders the network operators (if possible) to prevent operators from being in the list before the operators which create what they read.  If there are no problems with the given operator orders or it cannot find a workable order, the original list is returned.
 @param inputOperators: The operators to reorder.
 @param inputExistingBlobNames: A list of blobs which already exist for some other reason

@@ -248,7 +248,45 @@ caffe2::NetDef GoodBot::GetNetwork(const std::string& rootNetworkName, const std
 
     std::vector<caffe2::OperatorDef> operator_definitions = ConvertToOperatorDef(active_netops);
 
+    //Fix gradient passthrough with issue with "Sum" operator by renaming the input gradients to the output gradient because it passes through
+    std::map<std::string, std::string> replacements_to_perform; //Convert first -> second where encountered
+    for(const caffe2::OperatorDef& op : operator_definitions)
+    {
+        if(op.type() == "Sum")
+        {
+            for(int64_t input_index = 0; input_index < op.input_size(); input_index++)
+            {
+                SOM_ASSERT(replacements_to_perform.count(MakeGradientOperatorBlobName(op.input(input_index))) == 0, "Already have this");
+
+                replacements_to_perform[MakeGradientOperatorBlobName(op.input(input_index))] = MakeGradientOperatorBlobName(op.output(0));
+            }
+        }
+    }
+
+    for(caffe2::OperatorDef& op : operator_definitions)
+    {
+        for(int64_t input_index = 0; input_index < op.input_size(); input_index++)
+        {
+            if(replacements_to_perform.count(op.input(input_index)) > 0)
+            {
+                *op.mutable_input(input_index) = replacements_to_perform.at(op.input(input_index));
+            }
+        }
+
+        for(int64_t output_index = 0; output_index < op.output_size(); output_index++)
+        {
+            if(replacements_to_perform.count(op.output(output_index)) > 0)
+            {
+                *op.mutable_output(output_index) = replacements_to_perform.at(op.input(output_index));
+            }
+        }
+    }
+
+    SOM_ASSERT(active_netops.size() == operator_definitions.size(), "Number of operators and net ops does not match");
+
     operator_definitions = ReorderOperatorsToResolveDependencies(operator_definitions, netspace.GetWorkspace().Blobs());
+
+    SOM_ASSERT(active_netops.size() == operator_definitions.size(), "Number of reordered operators and original operators does not match");
 
     caffe2::NetDef network;
     network.set_name(rootNetworkName + "_" + activeMode);

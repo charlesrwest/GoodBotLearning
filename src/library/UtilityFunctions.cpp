@@ -169,6 +169,40 @@ AddOperatorToResults(operatorIndex);
 
 }
 
+if(processedEntryIndices.size() != inputOperators.size())
+{
+    std::cout << "Could not resolve dependencies for some operators: " << std::endl;
+for(int64_t operator_index = 0; operator_index < inputOperators.size(); operator_index++)
+{
+    if(processedEntryIndices.count(operator_index) > 0)
+    {
+    continue; //We already have this entry, so skip
+    }
+
+    const caffe2::OperatorDef& currentOperator = inputOperators[operator_index];
+    for(int64_t inputIndex = 0; inputIndex < currentOperator.input_size(); inputIndex++)
+    {
+    if(availableInputBlobNames.count(currentOperator.input(inputIndex)) == 0)
+    {
+    std::cout << currentOperator.name() << " is missing required input " << currentOperator.input(inputIndex) << " but would produce "; //This operator requires an input that is not available yet
+    for(int64_t output_index = 0; output_index < currentOperator.output_size(); output_index++)
+    {
+        std::cout << currentOperator.output(output_index) << " ";
+    }
+    std::cout << std::endl;
+
+    }
+    }
+}
+    std::cout << "Available inputs: " << std::endl;
+    for(const std::string& available_input_name : availableInputBlobNames)
+    {
+        std::cout << available_input_name << std::endl;
+    }
+}
+
+SOM_ASSERT(processedEntryIndices.size() == inputOperators.size(), "Some operators were not able to be resolved");
+
 return results;
 }
 
